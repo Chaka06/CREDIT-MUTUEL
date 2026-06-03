@@ -135,13 +135,22 @@ class BankAccountAdmin(admin.ModelAdmin):
     def get_form(self, request, obj=None, **kwargs):
         from django import forms
         from .constants import COUNTRY_LIST
+
+        exclude = list(kwargs.get('exclude') or [])
+
+        # banking_codes_preview est un callable readonly, pas un champ modèle.
+        # Il doit toujours être exclu de modelform_factory pour éviter le FieldError.
+        for f in ('banking_codes_preview',):
+            if f not in exclude:
+                exclude.append(f)
+
         if obj is None:
-            # À la création : bank est auto-assignée à Crédit Mutuel → exclure du formulaire
-            exclude = list(kwargs.get('exclude') or [])
+            # À la création : ces champs sont générés automatiquement → exclure du formulaire
             for f in ('bank', 'account_id', 'rib', 'plain_password', 'user', 'is_primary', 'account_type'):
                 if f not in exclude:
                     exclude.append(f)
-            kwargs['exclude'] = exclude
+
+        kwargs['exclude'] = exclude
         form = super().get_form(request, obj, **kwargs)
         if 'country' in form.base_fields:
             form.base_fields['country'] = forms.ChoiceField(
