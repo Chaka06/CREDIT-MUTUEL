@@ -138,9 +138,17 @@ class BankAccountAdmin(admin.ModelAdmin):
 
         exclude = list(kwargs.get('exclude') or [])
 
-        # banking_codes_preview est un callable readonly, pas un champ modèle.
-        # Il doit toujours être exclu de modelform_factory pour éviter le FieldError.
-        for f in ('banking_codes_preview',):
+        # Toujours exclure : callables readonly + champs non-éditables (auto_now)
+        # Django 6.x lève FieldError si un champ non-éditable est dans le formulaire,
+        # même s'il est listé dans readonly_fields.
+        always_exclude = [
+            'banking_codes_preview',  # callable JS, pas un champ modèle
+            'credentials_display',    # callable readonly
+            'login_url_display',      # callable readonly
+            'created_at',             # auto_now_add → non éditable
+            'updated_at',             # auto_now → non éditable
+        ]
+        for f in always_exclude:
             if f not in exclude:
                 exclude.append(f)
 
