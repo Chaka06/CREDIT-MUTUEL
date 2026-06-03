@@ -23,6 +23,13 @@ if _vercel_url and _vercel_url not in ALLOWED_HOSTS:
 if '.vercel.app' not in ALLOWED_HOSTS:
     ALLOWED_HOSTS.append('.vercel.app')
 
+# Domaine custom (ex: conectcredit.com)
+_custom_domain = os.getenv('CUSTOM_DOMAIN', '')
+if _custom_domain:
+    for _d in [_custom_domain, f'www.{_custom_domain}']:
+        if _d not in ALLOWED_HOSTS:
+            ALLOWED_HOSTS.append(_d)
+
 # ── Applications ───────────────────────────────────────────────────────────
 INSTALLED_APPS = [
     'django.contrib.admin',
