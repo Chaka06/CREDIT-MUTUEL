@@ -1,0 +1,33 @@
+# ── Environnement ──────────────────────────────────────────────────────────
+venv/
+.venv/
+env/
+.env
+.env.local
+.env.production
+
+# ── Python ─────────────────────────────────────────────────────────────────
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+
+# ── Django ─────────────────────────────────────────────────────────────────
+*.sqlite3
+db.sqlite3
+media/
+logs/
+
+# Note : staticfiles/ EST inclus dans le repo — requis par Vercel (Whitenoise)
+
+# ── IDE / OS ────────────────────────────────────────────────────────────────
+.DS_Store
+.idea/
+.vscode/
+*.swp
+*.swo
+Thumbs.db

