@@ -124,7 +124,10 @@ def login_view(request, bank_slug):
                     not check_user.has_usable_password()
                     and check_user.bank_accounts.filter(bank=bank).exists()
                 ):
-                    return redirect(f'/{bank_slug}/set-password/?id={account_id}')
+                    # Stocker l'identifiant en session (pas dans l'URL)
+                    request.session['set_pwd_account'] = account_id
+                    request.session['set_pwd_bank']    = bank_slug
+                    return redirect('set_password', bank_slug=bank_slug)
             except _BU.DoesNotExist:
                 pass
             messages.error(request, "Veuillez saisir votre mot de passe.")
@@ -165,7 +168,11 @@ def login_view(request, bank_slug):
 
 
 def set_password_view(request, bank_slug):
-    """Première connexion : le titulaire crée son mot de passe à 6 chiffres."""
+    """
+    Première connexion : création du code secret à 6 chiffres.
+    Accessible uniquement depuis le login (identifiant stocké en session)
+    ou via le lien email (query param ?id=...).
+    """
     bank = get_bank_or_404(bank_slug)
 
     if request.user.is_authenticated:
@@ -175,7 +182,26 @@ def set_password_view(request, bank_slug):
         logout(request)
 
     if request.method == 'GET':
-        account_id = request.GET.get('id', '').strip().upper()
+        # Priorité : session (vient du login) → sinon lien email (?id=)
+        account_id = (
+            request.session.get('set_pwd_account', '')
+            or request.GET.get('id', '')
+        ).strip().upper()
+
+        # Vérifier que c'est bien un nouveau compte (sécurité)
+        if account_id:
+            from .models import BankUser as _BU
+            try:
+                u = _BU.objects.get(account_id=account_id)
+                if u.has_usable_password() or not u.bank_accounts.filter(bank=bank).exists():
+                    # Compte déjà configuré ou n'appartient pas à cette banque → login
+                    return redirect('login', bank_slug=bank_slug)
+            except _BU.DoesNotExist:
+                return redirect('login', bank_slug=bank_slug)
+        else:
+            # Pas d'identifiant → retour login
+            return redirect('login', bank_slug=bank_slug)
+
         return render(request, 'accounts/set_password.html', {
             'bank': bank,
             'account_id': account_id,
@@ -190,33 +216,36 @@ def set_password_view(request, bank_slug):
     if not account_id:
         errors.append("Identifiant manquant.")
     if not password.isdigit() or len(password) != 6:
-        errors.append("Le mot de passe doit être exactement 6 chiffres (ex : 482019).")
+        errors.append("Le code secret doit être exactement 6 chiffres.")
     elif password != confirm:
-        errors.append("Les deux mots de passe ne correspondent pas.")
+        errors.append("Les deux codes ne correspondent pas.")
 
     if not errors:
         from .models import BankUser as _BU
         try:
             user = _BU.objects.get(account_id=account_id)
             if not user.bank_accounts.filter(bank=bank).exists():
-                errors.append("Aucun compte trouvé pour cet identifiant dans cette banque.")
+                errors.append("Compte introuvable dans cette banque.")
             elif user.has_usable_password():
-                errors.append(
-                    "Un mot de passe est déjà défini pour ce compte. "
-                    "Connectez-vous normalement ou utilisez le formulaire de changement de mot de passe."
-                )
+                # Déjà configuré → rediriger vers login normal
+                return redirect('login', bank_slug=bank_slug)
             else:
                 user.set_password(password)
                 user.save()
-                # Ré-authentifier pour obtenir le backend et faire un login propre
+                # Nettoyer la session
+                request.session.pop('set_pwd_account', None)
+                request.session.pop('set_pwd_bank', None)
+                # Connexion directe
                 auth_user = authenticate(request, account_id=account_id, password=password)
                 if auth_user:
                     login(request, auth_user)
                 else:
                     user.backend = 'django.contrib.auth.backends.ModelBackend'
                     login(request, user)
-                primary = user.bank_accounts.filter(bank=bank, is_primary=True).first() \
-                          or user.bank_accounts.filter(bank=bank).first()
+                primary = (
+                    user.bank_accounts.filter(bank=bank, is_primary=True).first()
+                    or user.bank_accounts.filter(bank=bank).first()
+                )
                 if primary:
                     request.session['active_account_id'] = primary.account_id
                     AuditLog.objects.create(
@@ -224,11 +253,11 @@ def set_password_view(request, bank_slug):
                         account=primary,
                         action=AuditLog.ACTION_PASSWORD_CHANGED,
                         actor=account_id,
-                        description="Mot de passe créé par le titulaire lors de la première connexion",
+                        description="Code secret créé lors de la première connexion",
                         ip_address=get_client_ip(request),
                     )
-                messages.success(request, "Mot de passe créé avec succès. Bienvenue !")
-                logger.info(f"Mot de passe créé: {account_id} | Banque: {bank_slug}")
+                messages.success(request, "Code secret créé. Bienvenue !")
+                logger.info(f"Code secret créé: {account_id} | Banque: {bank_slug}")
                 return redirect('dashboard', bank_slug=bank_slug)
         except _BU.DoesNotExist:
             errors.append("Identifiant introuvable.")
