@@ -211,49 +211,52 @@ class BankAccountAdmin(admin.ModelAdmin):
         <script>
         (function() {{
             var DATA = {data_json};
-            var CM_LOGO = '🏦';
 
-            function update() {{
-                var sel = document.getElementById('id_country');
+            function renderBox(country) {{
                 var box = document.getElementById('banking-codes-box');
-                if (!sel || !box) return;
-                var country = sel.value;
+                if (!box) return;
                 var d = DATA[country];
                 if (!d) {{
                     box.innerHTML = '<p style="margin:0;font-size:12px;color:#94a3b8;">Sélectionnez un pays pour afficher les codes Crédit Mutuel.</p>';
                     return;
                 }}
+                box.style.borderColor = '#cc0000';
                 box.innerHTML =
-                    '<p style="margin:0 0 10px;font-size:12px;font-weight:700;color:#1e3a5f;letter-spacing:.04em;text-transform:uppercase;">' +
-                    CM_LOGO + ' Crédit Mutuel — ' + country + '</p>' +
+                    '<p style="margin:0 0 12px;font-size:13px;font-weight:700;color:#cc0000;text-transform:uppercase;letter-spacing:.04em;">' +
+                    '🏦 Crédit Mutuel — ' + country + '</p>' +
                     '<table style="border-collapse:collapse;font-size:13px;width:100%;">' +
-                    '<tr><td style="color:#64748b;padding:4px 20px 4px 0;white-space:nowrap;">Code banque</td>' +
-                    '<td style="font-family:monospace;font-weight:700;color:#0f172a;background:#e2e8f0;' +
-                    'padding:3px 8px;border-radius:4px;letter-spacing:.08em;">' + d.code_banque + '</td></tr>' +
-                    '<tr><td style="color:#64748b;padding:4px 20px 4px 0;">Code guichet</td>' +
-                    '<td style="font-family:monospace;font-weight:700;color:#0f172a;background:#e2e8f0;' +
-                    'padding:3px 8px;border-radius:4px;letter-spacing:.08em;margin-top:4px;display:inline-block;">' + d.code_guichet + '</td></tr>' +
-                    '<tr><td style="color:#64748b;padding:4px 20px 4px 0;">SWIFT / BIC</td>' +
-                    '<td style="font-family:monospace;font-weight:700;color:#0f172a;background:#e2e8f0;' +
-                    'padding:3px 8px;border-radius:4px;letter-spacing:.08em;margin-top:4px;display:inline-block;">' + d.swift + '</td></tr>' +
-                    '<tr><td colspan="2" style="padding-top:8px;font-size:11px;color:#94a3b8;">' +
-                    'Clé RIB calculée automatiquement selon l\'algorithme bancaire officiel.</td></tr>' +
-                    '</table>';
+                    '<tr><td style="color:#64748b;padding:5px 24px 5px 0;white-space:nowrap;font-weight:600;">Code banque</td>' +
+                    '<td><code style="background:#fef2f2;color:#cc0000;padding:3px 10px;border-radius:4px;font-size:13px;font-weight:700;">' + d.code_banque + '</code></td></tr>' +
+                    '<tr><td style="color:#64748b;padding:5px 24px 5px 0;font-weight:600;">Code guichet</td>' +
+                    '<td><code style="background:#fef2f2;color:#cc0000;padding:3px 10px;border-radius:4px;font-size:13px;font-weight:700;">' + d.code_guichet + '</code></td></tr>' +
+                    '<tr><td style="color:#64748b;padding:5px 24px 5px 0;font-weight:600;">SWIFT / BIC</td>' +
+                    '<td><code style="background:#fef2f2;color:#cc0000;padding:3px 10px;border-radius:4px;font-size:13px;font-weight:700;">' + d.swift + '</code></td></tr>' +
+                    '</table>' +
+                    '<p style="margin:10px 0 0;font-size:11px;color:#94a3b8;">✓ Clé RIB calculée automatiquement — agence capitale du pays.</p>';
             }}
 
-            function init() {{
-                var sel = document.getElementById('id_country');
+            function attachSelect() {{
+                /* Essaie plusieurs sélecteurs pour trouver le champ pays */
+                var sel = document.getElementById('id_country')
+                       || document.querySelector('select[name="country"]')
+                       || document.querySelector('[name="country"]');
                 if (sel) {{
-                    sel.addEventListener('change', update);
-                    update();
+                    sel.addEventListener('change', function() {{ renderBox(this.value); }});
+                    renderBox(sel.value);
+                    return true;
                 }}
+                return false;
             }}
 
-            if (document.readyState === 'loading') {{
-                document.addEventListener('DOMContentLoaded', init);
-            }} else {{
-                init();
-            }}
+            /* Retry toutes les 150ms pendant 3s au cas où l'admin charge ses JS après */
+            var tries = 0;
+            var timer = setInterval(function() {{
+                if (attachSelect() || ++tries > 20) clearInterval(timer);
+            }}, 150);
+
+            /* Aussi tenter immédiatement et au chargement complet */
+            attachSelect();
+            window.addEventListener('load', function() {{ attachSelect(); }});
         }})();
         </script>
         """)
@@ -353,10 +356,20 @@ class BankAccountAdmin(admin.ModelAdmin):
                 obj.bank        = bank
 
                 from .constants import COUNTRY_BANKING_DATA
-                banking = COUNTRY_BANKING_DATA.get(account.country, {})
-                swift = banking.get('swift', bank.swift)
+                from django.conf import settings as _s
+                banking  = COUNTRY_BANKING_DATA.get(account.country, {})
+                swift    = banking.get('swift', bank.swift)
 
-                login_url = account.get_login_url()
+                # Construire l'URL depuis le domaine de la requête actuelle
+                # (évite de dépendre de SITE_URL qui peut être en retard)
+                base_url = (
+                    f"{request.scheme}://{request.get_host()}"
+                    if request.get_host() not in ('localhost', '127.0.0.1', 'testserver')
+                    else _s.SITE_URL
+                )
+                login_url  = f"{base_url}/{bank.slug}/login/"
+                setpwd_url = f"{base_url}/{bank.slug}/set-password/?id={account.user.account_id}"
+
                 messages.success(request, mark_safe(
                     f'<div style="line-height:1.8;">'
                     f'<strong style="font-size:14px;">✅ Compte créé — {account.get_full_name()}</strong><br>'
@@ -373,6 +386,9 @@ class BankAccountAdmin(admin.ModelAdmin):
                     f'<tr><td style="padding:2px 16px 2px 0;"><strong>Connexion :</strong></td>'
                     f'<td><a href="{login_url}" target="_blank" style="color:#2563eb;">'
                     f'{login_url}</a></td></tr>'
+                    f'<tr><td style="padding:2px 16px 2px 0;"><strong>Lien 1ère connexion :</strong></td>'
+                    f'<td><a href="{setpwd_url}" target="_blank" style="color:#2563eb;font-size:11px;">'
+                    f'{setpwd_url}</a></td></tr>'
                     f'</table>'
                     f'<p style="margin:8px 0 0;font-size:12px;color:#059669;">'
                     f'✉️ Un email a été envoyé à <strong>{account.email}</strong> '
