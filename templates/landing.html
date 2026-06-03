@@ -48,6 +48,7 @@
             color: var(--cm-dark);
             background: var(--cm-white);
             -webkit-font-smoothing: antialiased;
+            overflow-x: hidden;
         }
 
         a { text-decoration: none; color: inherit; }
@@ -355,7 +356,7 @@
             max-width: 1240px; margin: 0 auto;
         }
 
-        /* ── Responsive ────────────────────────────────────────── */
+        /* ── Responsive tablette ───────────────────────────────── */
         @media (max-width: 1024px) {
             .hero-inner { grid-template-columns: 1fr; }
             .hero-right { display: none; }
@@ -367,28 +368,80 @@
             .secu-grid { grid-template-columns: 1fr 1fr; }
             .footer-main { grid-template-columns: 1fr 1fr; }
             .nav-links { display: none; }
-            .nav-burger { display: block; }
-        }
-        @media (max-width: 600px) {
-            .kpi-inner { grid-template-columns: 1fr 1fr; }
-            .secu-grid { grid-template-columns: 1fr; }
-            .footer-main { grid-template-columns: 1fr; }
-            .hero-title { font-size: 1.75rem; }
-            .section { padding: 48px 16px; }
+            .nav-burger { display: flex; align-items: center; justify-content: center; }
+            /* Cacher "Mon espace client" texte — juste icône sur tablette */
+            .btn-connexion .btn-connexion-label { display: none; }
+            .btn-connexion { padding: 10px 12px; }
         }
 
-        /* Mobile nav */
+        /* ── Responsive mobile ──────────────────────────────────── */
+        @media (max-width: 768px) {
+            html { font-size: 16px; }
+
+            /* Top bar : masquée sur mobile */
+            .top-bar { display: none; }
+
+            /* Navbar */
+            .nav-inner { padding: 0 16px; min-height: 58px; }
+            .nav-logo { margin-right: 0; }
+            .nav-logo img { height: 36px; width: 36px; }
+            .nav-logo-text .credit,
+            .nav-logo-text .mutuel { font-size: 16px; }
+
+            /* Bouton connexion : masqué sur mobile (dans le menu hamburger) */
+            .btn-connexion { display: none; }
+
+            /* Hero */
+            .hero-left { padding: 36px 0; }
+            .hero-title { font-size: 1.7rem; }
+            .hero-text { font-size: 1rem; }
+            .btn-primary-cm,
+            .btn-secondary-cm { padding: 12px 20px; font-size: 15px; width: 100%; justify-content: center; }
+            .hero-actions { flex-direction: column; }
+
+            /* KPI */
+            .kpi-bar { padding: 16px 0; }
+            .kpi-inner { grid-template-columns: 1fr 1fr; gap: 0; }
+            .kpi-item { padding: 12px 10px; border-right: 1px solid var(--cm-border); }
+            .kpi-item:nth-child(2n) { border-right: none; }
+            .kpi-num { font-size: 1.8rem; }
+            .kpi-label { font-size: 13px; }
+
+            /* Sections */
+            .section { padding: 40px 16px; }
+            .section-title { font-size: 1.6rem; }
+            .stats-block { padding: 28px 24px; }
+            .stats-block-num { font-size: 2.4rem; }
+
+            /* Sécurité */
+            .secu-grid { grid-template-columns: 1fr; }
+
+            /* Footer */
+            .footer-main { grid-template-columns: 1fr; gap: 28px; padding: 36px 16px 24px; }
+            .footer-bottom { flex-direction: column; text-align: center; font-size: 13px; padding: 14px 16px; }
+        }
+
+        @media (max-width: 400px) {
+            html { font-size: 15px; }
+            .hero-title { font-size: 1.5rem; }
+            .kpi-num { font-size: 1.5rem; }
+        }
+
+        /* Mobile nav menu */
         #mobile-nav {
-            display: none; background: #fff; border-top: 1px solid var(--cm-border);
-            padding: 12px 0; box-shadow: 0 4px 16px rgba(0,0,0,.1);
+            display: none; background: #fff;
+            border-top: 2px solid var(--cm-red);
+            box-shadow: 0 6px 20px rgba(0,0,0,.12);
         }
         #mobile-nav.open { display: block; }
         #mobile-nav a {
-            display: block; padding: 12px 20px; font-size: 15px; font-weight: 600;
+            display: block; padding: 16px 20px; font-size: 16px; font-weight: 600;
             color: var(--cm-dark); border-bottom: 1px solid var(--cm-lgray);
+            transition: background .15s, color .15s;
         }
         #mobile-nav a:last-child { border-bottom: none; }
-        #mobile-nav a:hover { color: var(--cm-red); background: var(--cm-lgray); }
+        #mobile-nav a:hover,
+        #mobile-nav a:active { color: var(--cm-red); background: var(--cm-lgray); }
     </style>
 </head>
 <body>
@@ -443,7 +496,7 @@
                 <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
                     <path stroke-linecap="round" stroke-linejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/>
                 </svg>
-                Mon espace client
+                <span class="btn-connexion-label">Mon espace client</span>
             </a>
             {% endif %}
             <button class="nav-burger" onclick="toggleMobileNav()" aria-label="Menu">

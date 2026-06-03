@@ -228,6 +228,54 @@
         }
         .login-footer a { color: #999; text-decoration: none; margin: 0 8px; }
         .login-footer a:hover { color: var(--cm-red); }
+
+        /* ── Responsive mobile ───────────────────────────────────── */
+        @media (max-width: 600px) {
+            html { font-size: 16px; }
+            body { overflow-x: hidden; }
+
+            /* Header */
+            .login-header-inner { padding: 0 14px; height: 54px; }
+            .login-logo { gap: 8px; }
+            .login-logo img { height: 30px; width: 30px; }
+            .login-logo-text .c1,
+            .login-logo-text .c2 { font-size: 15px; }
+            .back-link { font-size: 13px; }
+            .back-link span { display: none; } /* juste l'icône */
+
+            /* Corps */
+            .login-body { padding: 20px 12px 40px; }
+            .login-card-head { padding: 20px 18px 16px; }
+            .login-card-body { padding: 20px 18px 24px; }
+            .login-card-title { font-size: 1.2rem; }
+            .login-card-sub { font-size: 14px; }
+
+            /* Champs */
+            .field label { font-size: 14px; }
+            .field input { font-size: 16px; padding: 11px 12px; }
+            #password-field { font-size: 1.4rem; }
+
+            /* Bouton */
+            .btn-cm { padding: 13px; font-size: 16px; }
+
+            /* Infos */
+            .login-info { padding: 12px 14px; }
+            .login-info-item { font-size: 13px; }
+
+            /* Footer */
+            .login-footer { padding: 12px 14px; }
+            .login-footer-inner { font-size: 12px; flex-direction: column; text-align: center; gap: 4px; }
+            .login-footer a { margin: 0 4px; }
+
+            /* Hint */
+            .field-hint { font-size: 12px; }
+            .first-login-link { font-size: 14px; }
+        }
+
+        @media (max-width: 380px) {
+            .login-logo-text { display: none; } /* petit écran : juste logo */
+            .login-header-inner { height: 50px; }
+        }
     </style>
 </head>
 <body>
@@ -248,7 +296,7 @@
             <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
                 <path stroke-linecap="round" stroke-linejoin="round" d="M10 19l-7-7m0 0l7-7m-7 7h18"/>
             </svg>
-            Retour au site
+            <span>Retour au site</span>
         </a>
     </div>
 </header>
