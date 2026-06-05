@@ -310,10 +310,20 @@ class BankAccountAdmin(admin.ModelAdmin):
         actor = request.user.get_username()
 
         if not change:
+            # Récupérer la banque CM en tout premier et l'assigner à obj
+            # (nécessaire pour que __str__ fonctionne même en cas d'erreur)
+            try:
+                bank = _get_credit_mutuel_bank()
+            except ValidationError as e:
+                messages.error(request, str(e.message))
+                request._save_error = True
+                return
+
+            obj.bank = bank  # assigner immédiatement pour éviter bank=None
+
             # Vérifier qu'un compte courant n'existe pas déjà pour cet email
             try:
                 from .models import BankUser
-                bank = _get_credit_mutuel_bank()
                 existing_user = BankUser.objects.get(email=obj.email)
                 if existing_user.bank_accounts.filter(
                     bank=bank, account_type=BankAccount.TYPE_COURANT
@@ -326,17 +336,6 @@ class BankAccountAdmin(admin.ModelAdmin):
                     return
             except BankUser.DoesNotExist:
                 pass
-            except ValidationError as e:
-                messages.error(request, str(e.message))
-                request._save_error = True
-                return
-
-            try:
-                bank = _get_credit_mutuel_bank()
-            except ValidationError as e:
-                messages.error(request, str(e.message))
-                request._save_error = True
-                return
 
             data = {
                 'first_name':   obj.first_name,

@@ -102,7 +102,11 @@ class BankAccount(models.Model):
         ]
 
     def __str__(self):
-        return f"{self.first_name} {self.last_name} — {self.get_account_type_display()} {self.account_id} ({self.bank.name})"
+        try:
+            bank_name = self.bank.name
+        except Exception:
+            bank_name = '—'
+        return f"{self.first_name} {self.last_name} — {self.get_account_type_display()} {self.account_id} ({bank_name})"
 
     def get_full_name(self):
         return f"{self.first_name} {self.last_name}"
