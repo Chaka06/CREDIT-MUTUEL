@@ -146,6 +146,9 @@
             outline: 2px solid var(--p); outline-offset: 0; border-color: transparent;
         }
 
+        /* ── Prevent iOS auto-zoom on input focus (requires font-size >= 16px) ─ */
+        input, select, textarea { font-size: max(16px, 1em); }
+
         /* ── Stat card accent ──────────────────────────────── */
         .stat-card { position: relative; overflow: hidden; }
         .stat-card::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px; border-radius: 16px 16px 0 0; }
