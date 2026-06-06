@@ -506,14 +506,6 @@ def _hex_to_rgb(hex_color):
     return tuple(int(h[i:i+2], 16) / 255 for i in (0, 2, 4))
 
 
-# URL du cachet officiel CM (image réelle — non générée)
-_CM_STAMP_URL = (
-    "https://cdnwmsi.e-i.com/SITW/wm/global/1.0.0/af/assets/articles/"
-    "CERT-euro-information/cm_hero-article.jpg?1"
-)
-_CM_STAMP_CACHE: bytes | None = None
-
-
 _HTTP_HEADERS = {
     'User-Agent': (
         'Mozilla/5.0 (compatible; BankingPlatform/1.0; '
@@ -521,48 +513,49 @@ _HTTP_HEADERS = {
     )
 }
 
-
-def _get_stamp_bytes() -> bytes | None:
-    """Télécharge et met en cache l'image de cachet CM."""
-    global _CM_STAMP_CACHE
-    if _CM_STAMP_CACHE is not None:
-        return _CM_STAMP_CACHE
-    try:
-        resp = _requests.get(_CM_STAMP_URL, timeout=8, headers=_HTTP_HEADERS)
-        if resp.status_code == 200:
-            _CM_STAMP_CACHE = resp.content
-            return _CM_STAMP_CACHE
-    except Exception:
-        pass
-    return None
+# Cache module-level pour le reader du cachet (créé une seule fois par process)
+_STAMP_READER_CACHE: ImageReader | None = None
 
 
-def _make_stamp_reader(alpha: int = 180) -> ImageReader | None:
+def _make_stamp_reader() -> ImageReader | None:
     """
-    Retourne un ImageReader ReportLab pour le cachet CM.
-    alpha : opacité 0-255 (180 ≃ 70 % opaque → effet cachet semi-transparent).
+    Charge cachet.png (racine du projet), rend le fond blanc transparent,
+    et met en cache le résultat pour éviter de recalculer à chaque PDF.
     """
-    raw = _get_stamp_bytes()
-    if not raw:
+    global _STAMP_READER_CACHE
+    if _STAMP_READER_CACHE is not None:
+        return _STAMP_READER_CACHE
+
+    cachet_path = os.path.join(str(settings.BASE_DIR), 'cachet.png')
+    if not os.path.exists(cachet_path):
         return None
     try:
-        img = _PILImage.open(io.BytesIO(raw)).convert('RGBA')
-        r, g, b, a = img.split()
-        a = a.point(lambda p: min(p, alpha))
-        img = _PILImage.merge('RGBA', (r, g, b, a))
+        img = _PILImage.open(cachet_path).convert('RGBA')
+        data = img.getdata()
+        new_data = []
+        for r, g, b, a in data:
+            # Fond blanc/quasi-blanc → transparent
+            if r > 230 and g > 230 and b > 230:
+                new_data.append((r, g, b, 0))
+            else:
+                # Éléments du logo → légèrement transparents (effet cachet)
+                new_data.append((r, g, b, int(a * 0.82)))
+        img.putdata(new_data)
         out = io.BytesIO()
         img.save(out, format='PNG')
         out.seek(0)
-        return ImageReader(out)
+        _STAMP_READER_CACHE = ImageReader(out)
+        return _STAMP_READER_CACHE
     except Exception:
         return None
 
 
-def _draw_image_stamp(canvas, cx, cy, w=58*mm, h=29*mm, tilt=-13):
+def _draw_image_stamp(canvas, cx, cy, w=60*mm, h=30*mm, tilt=-12):
     """
-    Dessine le cachet CM (image réelle) centré en (cx, cy), penché de `tilt` degrés.
+    Dessine cachet.png centré en (cx, cy), penché de `tilt` degrés.
+    Fond blanc retiré (transparent), éléments CM semi-transparents.
     """
-    reader = _make_stamp_reader(alpha=175)
+    reader = _make_stamp_reader()
     if not reader:
         return
     canvas.saveState()
@@ -776,31 +769,75 @@ def _page_bg(canvas, doc, bank, doc_type):
 
 # ── PDF : tableau d'informations ───────────────────────────────────────────
 
+_LABEL_STYLE = ParagraphStyle(
+    'InfoLabel',
+    fontName='Helvetica-Bold',
+    fontSize=8,
+    textColor=colors.HexColor('#1a3a5c'),
+    leading=11,
+    wordWrap='LTR',
+)
+_VALUE_STYLE = ParagraphStyle(
+    'InfoValue',
+    fontName='Helvetica',
+    fontSize=8.5,
+    textColor=colors.HexColor('#1f2937'),
+    leading=12,
+    wordWrap='LTR',
+)
+_VALUE_MONO_STYLE = ParagraphStyle(
+    'InfoValueMono',
+    fontName='Courier',
+    fontSize=8,
+    textColor=colors.HexColor('#1f2937'),
+    leading=11,
+    wordWrap='LTR',
+)
+
+
+def _wrap_cell(value, mono=False):
+    """Convertit une valeur en Paragraph pour garantir le retour à la ligne."""
+    if isinstance(value, Paragraph):
+        return value
+    style = _VALUE_MONO_STYLE if mono else _VALUE_STYLE
+    return Paragraph(str(value) if value is not None else '—', style)
+
+
 def _build_info_table(data, primary, col_widths=None):
+    """
+    Tableau label/valeur avec retour à la ligne automatique sur les valeurs longues.
+    Les chaînes IBAN/codes sont détectées et affichées en police monospace.
+    """
     if col_widths is None:
-        col_widths = [62 * mm, 108 * mm]
-    table = Table(data, colWidths=col_widths)
+        col_widths = [58 * mm, 112 * mm]
+
+    _iban_keywords = {'iban', 'rib', 'bic', 'swift', 'code'}
+
+    wrapped = []
+    for row in data:
+        label = row[0]
+        value = row[1] if len(row) > 1 else ''
+        # Détection IBAN/code : affichage monospace
+        is_mono = any(k in str(label).lower() for k in _iban_keywords)
+        wrapped.append([
+            Paragraph(str(label), _LABEL_STYLE),
+            _wrap_cell(value, mono=is_mono),
+        ])
+
+    table = Table(wrapped, colWidths=col_widths)
     table.setStyle(TableStyle([
-        # Colonne label (gauche)
-        ('BACKGROUND',    (0, 0), (0, -1), colors.HexColor('#f3f6fa')),
-        ('TEXTCOLOR',     (0, 0), (0, -1), colors.HexColor('#1a3a5c')),
-        ('FONTNAME',      (0, 0), (0, -1), 'Helvetica-Bold'),
-        ('FONTSIZE',      (0, 0), (0, -1), 8.5),
-        # Colonne valeur (droite)
-        ('FONTNAME',      (1, 0), (1, -1), 'Helvetica'),
-        ('FONTSIZE',      (1, 0), (1, -1), 9),
-        ('TEXTCOLOR',     (1, 0), (1, -1), colors.HexColor('#1f2937')),
-        # Alternance légère
-        ('ROWBACKGROUNDS', (1, 0), (1, -1), [colors.white, colors.HexColor('#fafbfc')]),
-        # Bordures
-        ('LINEBELOW',     (0, 0), (-1, -2), 0.35, colors.HexColor('#e2e8f0')),
-        ('BOX',           (0, 0), (-1, -1), 0.6,  colors.HexColor('#cbd5e1')),
-        ('LINEBEFORE',    (1, 0), (1, -1),  0.35, colors.HexColor('#e2e8f0')),
-        # Padding
-        ('TOPPADDING',    (0, 0), (-1, -1), 8),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
-        ('LEFTPADDING',   (0, 0), (-1, -1), 11),
-        ('RIGHTPADDING',  (0, 0), (-1, -1), 10),
+        # Colonne label (gauche) — fond bleuté
+        ('BACKGROUND',    (0, 0), (0, -1), colors.HexColor('#f0f4f9')),
+        ('LINEBELOW',     (0, 0), (-1, -2), 0.3, colors.HexColor('#dde3ed')),
+        ('BOX',           (0, 0), (-1, -1), 0.6, colors.HexColor('#c8d4e4')),
+        ('LINEBEFORE',    (1, 0), (1, -1),  0.3, colors.HexColor('#dde3ed')),
+        # Alternance sur la colonne valeur
+        ('ROWBACKGROUNDS', (1, 0), (1, -1), [colors.white, colors.HexColor('#f9fafb')]),
+        # Padding généreux pour éviter les débordements
+        ('TOPPADDING',    (0, 0), (-1, -1), 7),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 7),
+        ('LEFTPADDING',   (0, 0), (-1, -1), 9),
+        ('RIGHTPADDING',  (0, 0), (-1, -1), 8),
         ('VALIGN',        (0, 0), (-1, -1), 'MIDDLE'),
     ]))
     return table
@@ -829,48 +866,32 @@ def generate_rib_pdf(bank_account, all_accounts=None):
     buffer = io.BytesIO()
     bank = bank_account.bank
     primary = colors.HexColor(bank.color_primary)
-    CONTENT_W = 170 * mm
+    # Marges 18 mm → contenu 174 mm
+    ML = MR = 18 * mm
+    CONTENT_W = 210 * mm - ML - MR   # 174 mm
 
     doc = SimpleDocTemplate(
         buffer, pagesize=A4,
         topMargin=60 * mm, bottomMargin=44 * mm,
-        leftMargin=20 * mm, rightMargin=20 * mm,
+        leftMargin=ML, rightMargin=MR,
     )
     story = []
     page_fn = lambda c, d: _page_bg(c, d, bank, "RELEVÉ D'IDENTITÉ BANCAIRE (RIB)")
 
     story.append(Spacer(1, 4 * mm))
 
-    # ── Titulaire + banque en deux colonnes ────────────────────────
-    col_l = 82 * mm
-    col_r = 82 * mm
-    gap   = 6 * mm
-
-    holder_data = [
-        ['Titulaire', bank_account.get_full_name()],
-        ['Pays',      bank_account.country],
-        ['Devise',    bank_account.currency],
+    # ── Titulaire + banque (pleine largeur, une seule table) ───────
+    # Utilise la pleine largeur pour éviter tout débordement
+    common_data = [
+        ['Titulaire du compte', bank_account.get_full_name()],
+        ['Domiciliation',       bank.name],
+        ['Adresse banque',      (bank.address or '').replace('\n', '  ·  ')],
+        ['BIC / SWIFT',         bank_account.bank_swift or bank.swift or '—'],
+        ['Pays',                bank_account.country],
+        ['Devise',              bank_account.currency],
     ]
-    bank_data = [
-        ['Domiciliation', bank.name],
-        ['Adresse',       (bank.address or '').replace('\n', ' ')[:40]],
-        ['BIC / SWIFT',   bank_account.bank_swift or bank.swift or '—'],
-    ]
-
-    two_col = Table(
-        [[_build_info_table(holder_data, primary, [32 * mm, 46 * mm]),
-          _build_info_table(bank_data,   primary, [32 * mm, 46 * mm])]],
-        colWidths=[col_l, col_r],
-        hAlign='LEFT',
-    )
-    two_col.setStyle(TableStyle([
-        ('LEFTPADDING',  (0, 0), (-1, -1), 0),
-        ('RIGHTPADDING', (0, 0), (-1, -1), 0),
-        ('TOPPADDING',   (0, 0), (-1, -1), 0),
-        ('BOTTOMPADDING',(0, 0), (-1, -1), 0),
-        ('LEFTPADDING',  (1, 0), (1, -1),  gap),
-    ]))
-    story.append(two_col)
+    # label=52 mm, valeur=122 mm → total 174 mm = CONTENT_W
+    story.append(_build_info_table(common_data, primary, [52 * mm, CONTENT_W - 52 * mm]))
     story.append(Spacer(1, 8 * mm))
 
     # ── Coordonnées IBAN par compte ────────────────────────────────
@@ -878,46 +899,59 @@ def generate_rib_pdf(bank_account, all_accounts=None):
     for acc in accounts_to_show:
         story.append(_section_header(acc.get_account_type_display().upper(), primary))
 
+        # IBAN formaté en groupes de 4 — bloc centré pleine largeur
         iban_fmt = ' '.join(acc.rib[i:i+4] for i in range(0, len(acc.rib), 4))
-
-        # IBAN mis en valeur dans un bloc
         iban_block = Table(
-            [[Paragraph(f'<font name="Helvetica-Bold" size="13">{iban_fmt}</font>',
-                        ParagraphStyle('IBAN', alignment=TA_CENTER, spaceAfter=0))]],
+            [[Paragraph(
+                f'<font name="Courier-Bold" size="12">{iban_fmt}</font>',
+                ParagraphStyle('IBAN', alignment=TA_CENTER, leading=16),
+            )]],
             colWidths=[CONTENT_W],
         )
         iban_block.setStyle(TableStyle([
-            ('BACKGROUND',     (0, 0), (-1, -1), colors.HexColor('#eef4fb')),
-            ('BOX',            (0, 0), (-1, -1), 1.2, primary),
-            ('TOPPADDING',     (0, 0), (-1, -1), 10),
-            ('BOTTOMPADDING',  (0, 0), (-1, -1), 10),
+            ('BACKGROUND',    (0, 0), (-1, -1), colors.HexColor('#eef4fb')),
+            ('BOX',           (0, 0), (-1, -1), 1.5, primary),
+            ('TOPPADDING',    (0, 0), (-1, -1), 12),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 12),
+            ('LEFTPADDING',   (0, 0), (-1, -1), 10),
+            ('RIGHTPADDING',  (0, 0), (-1, -1), 10),
         ]))
         story.append(iban_block)
         story.append(Spacer(1, 4 * mm))
 
-        rib_data = [
-            ['Code banque',  acc.rib_code_banque or '—'],
-            ['Code guichet', acc.rib_code_guichet or '—'],
-            ['N° de compte', acc.rib_numero_compte or '—'],
-            ['Clé RIB',      acc.rib_cle or '—'],
-        ]
-        story.append(_build_info_table(rib_data, primary))
+        # Détail RIB sur 2 colonnes côte à côte
+        rib_left  = [['Code banque',  acc.rib_code_banque or '—'],
+                     ['Code guichet', acc.rib_code_guichet or '—']]
+        rib_right = [['N° de compte', acc.rib_numero_compte or '—'],
+                     ['Clé RIB',      acc.rib_cle or '—']]
+        half = CONTENT_W / 2 - 2 * mm
+        rib_row = Table(
+            [[_build_info_table(rib_left,  primary, [28 * mm, half - 28 * mm]),
+              _build_info_table(rib_right, primary, [28 * mm, half - 28 * mm])]],
+            colWidths=[half, half],
+        )
+        rib_row.setStyle(TableStyle([
+            ('LEFTPADDING',   (0, 0), (-1, -1), 0),
+            ('RIGHTPADDING',  (0, 0), (-1, -1), 0),
+            ('TOPPADDING',    (0, 0), (-1, -1), 0),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 0),
+            ('LEFTPADDING',   (1, 0), (1, -1),  4 * mm),
+        ]))
+        story.append(rib_row)
         story.append(Spacer(1, 5 * mm))
 
     # ── Certification ──────────────────────────────────────────────
     story.append(Spacer(1, 4 * mm))
-    cert_style = ParagraphStyle(
-        'Cert', fontSize=8.5, leading=14,
-        textColor=colors.HexColor('#374151'),
-        borderWidth=0.6, borderColor=colors.HexColor('#cbd5e1'),
-        borderPad=8, backColor=colors.HexColor('#f8fafc'),
-        spaceAfter=0,
-    )
     story.append(Paragraph(
         f"Je soussigné(e) certifie que les coordonnées bancaires figurant sur ce document "
         f"sont exactes et correspondent à mon/mes compte(s) ouvert(s) auprès de "
         f"<b>{bank.name}</b>.",
-        cert_style,
+        ParagraphStyle(
+            'Cert', fontSize=8.5, leading=14,
+            textColor=colors.HexColor('#374151'),
+            borderWidth=0.6, borderColor=colors.HexColor('#cbd5e1'),
+            borderPad=10, backColor=colors.HexColor('#f8fafc'),
+        ),
     ))
 
     doc.build(story, onFirstPage=page_fn, onLaterPages=page_fn)
@@ -930,24 +964,24 @@ def generate_rib_pdf(bank_account, all_accounts=None):
 def generate_transfer_slip_pdf(transaction):
     buffer = io.BytesIO()
     bank = transaction.account.bank
-    primary      = colors.HexColor(bank.color_primary)
-    primary_rgb  = _hex_to_rgb(bank.color_primary)
-    CONTENT_W    = 170 * mm
+    primary   = colors.HexColor(bank.color_primary)
+    ML = MR   = 18 * mm
+    CONTENT_W = 210 * mm - ML - MR   # 174 mm
 
     STATUS_CONFIG = {
-        'pending':   ('#fffbeb', '#92400e', '#f59e0b', 'EN COURS DE VALIDATION', '⏳'),
-        'validated': ('#f0fdf4', '#166534', '#22c55e', 'VALIDÉ',                 '✓'),
-        'rejected':  ('#fef2f2', '#991b1b', '#ef4444', 'REJETÉ',                 '✕'),
+        'pending':   ('#fffbeb', '#92400e', '#f59e0b', 'EN COURS DE VALIDATION'),
+        'validated': ('#f0fdf4', '#166534', '#22c55e', 'VIREMENT VALIDÉ'),
+        'rejected':  ('#fef2f2', '#991b1b', '#ef4444', 'VIREMENT REJETÉ'),
     }
-    s_bg, s_fg, s_border, s_label, s_icon = STATUS_CONFIG.get(
+    s_bg, s_fg, s_border, s_label = STATUS_CONFIG.get(
         transaction.status,
-        ('#f3f4f6', '#374151', '#9ca3af', transaction.status.upper(), '●')
+        ('#f3f4f6', '#374151', '#9ca3af', transaction.status.upper())
     )
 
     doc = SimpleDocTemplate(
         buffer, pagesize=A4,
         topMargin=60 * mm, bottomMargin=44 * mm,
-        leftMargin=20 * mm, rightMargin=20 * mm,
+        leftMargin=ML, rightMargin=MR,
     )
     story = []
     page_fn = lambda c, d: _page_bg(c, d, bank, "BORDEREAU DE VIREMENT")
@@ -955,44 +989,44 @@ def generate_transfer_slip_pdf(transaction):
     story.append(Spacer(1, 5 * mm))
 
     # ── Badge statut ───────────────────────────────────────────────
-    status_tbl = Table(
+    story.append(Table(
         [[Paragraph(
-            f'<font name="Helvetica-Bold" size="12" color="{s_fg}">'
-            f'{s_icon}  {s_label}</font>',
+            f'<font name="Helvetica-Bold" size="11" color="{s_fg}">{s_label}</font>',
             ParagraphStyle('St', alignment=TA_CENTER),
         )]],
         colWidths=[CONTENT_W],
-    )
-    status_tbl.setStyle(TableStyle([
-        ('BACKGROUND',    (0, 0), (-1, -1), colors.HexColor(s_bg)),
-        ('BOX',           (0, 0), (-1, -1), 1.8, colors.HexColor(s_border)),
-        ('TOPPADDING',    (0, 0), (-1, -1), 12),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 12),
-    ]))
-    story.append(status_tbl)
-    story.append(Spacer(1, 7 * mm))
+        style=TableStyle([
+            ('BACKGROUND',    (0, 0), (-1, -1), colors.HexColor(s_bg)),
+            ('BOX',           (0, 0), (-1, -1), 1.8, colors.HexColor(s_border)),
+            ('TOPPADDING',    (0, 0), (-1, -1), 11),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 11),
+            ('LEFTPADDING',   (0, 0), (-1, -1), 10),
+            ('RIGHTPADDING',  (0, 0), (-1, -1), 10),
+        ]),
+    ))
+    story.append(Spacer(1, 6 * mm))
 
     # ── Montant mis en évidence ────────────────────────────────────
     sign  = '−' if transaction.is_debit else '+'
-    color = '#dc2626' if transaction.is_debit else '#16a34a'
-    amount_tbl = Table(
+    amt_color = '#dc2626' if transaction.is_debit else '#16a34a'
+    story.append(Table(
         [[Paragraph(
-            f'<font name="Helvetica-Bold" size="22" color="{color}">'
+            f'<font name="Helvetica-Bold" size="20" color="{amt_color}">'
             f'{sign} {transaction.amount:,.2f} {transaction.currency}</font>',
             ParagraphStyle('Amt', alignment=TA_CENTER),
         )]],
         colWidths=[CONTENT_W],
-    )
-    amount_tbl.setStyle(TableStyle([
-        ('BACKGROUND',    (0, 0), (-1, -1), colors.HexColor('#f8fafc')),
-        ('BOX',           (0, 0), (-1, -1), 0.4, colors.HexColor('#e2e8f0')),
-        ('TOPPADDING',    (0, 0), (-1, -1), 12),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 12),
-    ]))
-    story.append(amount_tbl)
+        style=TableStyle([
+            ('BACKGROUND',    (0, 0), (-1, -1), colors.HexColor('#f8fafc')),
+            ('BOX',           (0, 0), (-1, -1), 0.4, colors.HexColor('#e2e8f0')),
+            ('TOPPADDING',    (0, 0), (-1, -1), 11),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 11),
+        ]),
+    ))
     story.append(Spacer(1, 7 * mm))
 
-    # ── Parties : Donneur d'ordre | Bénéficiaire ───────────────────
+    # ── Donneur d'ordre + Bénéficiaire (pleine largeur, l'un après l'autre) ─
+    # On évite les 2 colonnes qui débordent — on utilise 2 tables séquentielles
     benef_iban = (
         transaction.beneficiary.account_number
         if transaction.beneficiary else transaction.beneficiary_iban
@@ -1003,39 +1037,33 @@ def generate_transfer_slip_pdf(transaction):
         if transaction.beneficiary else transaction.beneficiary_bank
     ) or '—'
 
-    col = 82 * mm
-    gap = 6 * mm
-    parties = Table(
-        [[_build_info_table(
-              [['Donneur d\'ordre', transaction.account.get_full_name()],
-               ['IBAN',            transaction.account.rib]],
-              primary, [30 * mm, 48 * mm],
-          ),
-          _build_info_table(
-              [['Bénéficiaire',    benef_name],
-               ['IBAN',            benef_iban],
-               ['Banque',          benef_bank]],
-              primary, [28 * mm, 50 * mm],
-          )]],
-        colWidths=[col, col],
-    )
-    parties.setStyle(TableStyle([
-        ('LEFTPADDING',  (0, 0), (-1, -1), 0),
-        ('RIGHTPADDING', (0, 0), (-1, -1), 0),
-        ('TOPPADDING',   (0, 0), (-1, -1), 0),
-        ('BOTTOMPADDING',(0, 0), (-1, -1), 0),
-        ('LEFTPADDING',  (1, 0), (1, -1),  gap),
-    ]))
-    story.append(parties)
+    # Label column = 48 mm, valeur = CONTENT_W - 48 mm
+    LW = 48 * mm
+    VW = CONTENT_W - LW
+
+    story.append(_section_header("DONNEUR D'ORDRE", primary))
+    story.append(_build_info_table([
+        ['Nom',  transaction.account.get_full_name()],
+        ['IBAN', transaction.account.rib],
+    ], primary, [LW, VW]))
+
+    story.append(Spacer(1, 5 * mm))
+    story.append(_section_header('BÉNÉFICIAIRE', primary))
+    story.append(_build_info_table([
+        ['Nom',   benef_name],
+        ['IBAN',  benef_iban],
+        ['Banque', benef_bank],
+    ], primary, [LW, VW]))
+
     story.append(Spacer(1, 7 * mm))
 
-    # ── Détails du virement ────────────────────────────────────────
-    story.append(_section_header('DÉTAILS DE L\'OPÉRATION', primary))
+    # ── Détails de l'opération ─────────────────────────────────────
+    story.append(_section_header("DÉTAILS DE L'OPÉRATION", primary))
     detail_data = [
-        ['Référence',       transaction.reference],
-        ['Type',            transaction.get_transaction_type_display()],
-        ['Date d\'initiation', transaction.created_at.strftime('%d/%m/%Y  %H:%M')],
-        ['Motif / Libellé', transaction.description or '—'],
+        ['Référence',          transaction.reference],
+        ['Type',               transaction.get_transaction_type_display()],
+        ["Date d'initiation",  transaction.created_at.strftime('%d/%m/%Y  %H:%M')],
+        ['Motif / Libellé',    transaction.description or '—'],
     ]
     if transaction.status == 'validated' and transaction.validated_at:
         detail_data.append(['Date de validation', transaction.validated_at.strftime('%d/%m/%Y  %H:%M')])
@@ -1047,7 +1075,7 @@ def generate_transfer_slip_pdf(transaction):
             detail_data.append(['Frais de redirection',
                                  f"{transaction.rejection_fee:,.2f} {transaction.currency}"])
 
-    story.append(_build_info_table(detail_data, primary))
+    story.append(_build_info_table(detail_data, primary, [LW, VW]))
 
     doc.build(story, onFirstPage=page_fn, onLaterPages=page_fn)
     buffer.seek(0)
@@ -1060,12 +1088,13 @@ def generate_statement_pdf(bank_account, transactions, date_from, date_to):
     buffer = io.BytesIO()
     bank = bank_account.bank
     primary = colors.HexColor(bank.color_primary)
-    CONTENT_W = 180 * mm
+    ML = MR  = 12 * mm
+    CONTENT_W = 210 * mm - ML - MR   # 186 mm
 
     doc = SimpleDocTemplate(
         buffer, pagesize=A4,
         topMargin=60 * mm, bottomMargin=44 * mm,
-        leftMargin=15 * mm, rightMargin=15 * mm,
+        leftMargin=ML, rightMargin=MR,
     )
     story = []
     period = f"Période : {date_from.strftime('%d/%m/%Y')} → {date_to.strftime('%d/%m/%Y')}"
@@ -1075,26 +1104,30 @@ def generate_statement_pdf(bank_account, transactions, date_from, date_to):
 
     # ── Carte compte ───────────────────────────────────────────────
     iban_fmt = ' '.join(bank_account.rib[i:i+4] for i in range(0, len(bank_account.rib), 4))
+    # 2 colonnes : nom à gauche (60%), IBAN à droite (40%)
+    col_name = CONTENT_W * 0.45
+    col_iban = CONTENT_W * 0.55
     acct_tbl = Table(
         [[Paragraph(
-            f'<b><font size="9">{bank_account.get_full_name()}</font></b>',
-            ParagraphStyle('AN', spaceAfter=0, spaceBefore=0),
+              f'<font name="Helvetica-Bold" size="10">{bank_account.get_full_name()}</font><br/>'
+              f'<font name="Helvetica" size="7.5" color="#64748b">{bank_account.get_account_type_display()}</font>',
+              ParagraphStyle('AN', leading=14, spaceAfter=0),
           ),
           Paragraph(
-            f'<font name="Helvetica" size="7.5" color="#64748b">IBAN</font><br/>'
-            f'<font name="Helvetica-Bold" size="9">{iban_fmt}</font>',
-            ParagraphStyle('AI', alignment=TA_RIGHT, spaceAfter=0),
+              f'<font name="Helvetica" size="7" color="#64748b">IBAN</font><br/>'
+              f'<font name="Courier-Bold" size="8.5">{iban_fmt}</font>',
+              ParagraphStyle('AI', alignment=TA_RIGHT, leading=13, spaceAfter=0),
           )]],
-        colWidths=[90 * mm, 90 * mm],
+        colWidths=[col_name, col_iban],
     )
     acct_tbl.setStyle(TableStyle([
         ('BACKGROUND',    (0, 0), (-1, -1), colors.HexColor('#eef4fb')),
         ('BOX',           (0, 0), (-1, -1), 0.8, primary),
-        ('LINEBEFORE',    (1, 0), (1, -1),  0.5, colors.HexColor('#cbd5e1')),
+        ('LINEBEFORE',    (1, 0), (1, -1),  0.5, colors.HexColor('#c8d4e4')),
         ('TOPPADDING',    (0, 0), (-1, -1), 10),
         ('BOTTOMPADDING', (0, 0), (-1, -1), 10),
-        ('LEFTPADDING',   (0, 0), (-1, -1), 12),
-        ('RIGHTPADDING',  (0, 0), (-1, -1), 12),
+        ('LEFTPADDING',   (0, 0), (-1, -1), 10),
+        ('RIGHTPADDING',  (0, 0), (-1, -1), 10),
         ('VALIGN',        (0, 0), (-1, -1), 'MIDDLE'),
     ]))
     story.append(acct_tbl)
@@ -1103,73 +1136,82 @@ def generate_statement_pdf(bank_account, transactions, date_from, date_to):
     # ── Tableau des transactions ───────────────────────────────────
     story.append(_section_header('MOUVEMENTS DU COMPTE', primary))
 
-    headers = ['Date', 'Référence', 'Libellé / Description', 'Débit', 'Crédit', 'Statut']
-    rows = [headers]
+    # Styles pour cellules Paragraph dans le tableau
+    _th = ParagraphStyle('TH', fontName='Helvetica-Bold', fontSize=7.5,
+                         textColor=colors.white, leading=10, wordWrap='LTR')
+    _td = ParagraphStyle('TD', fontName='Helvetica', fontSize=7.5,
+                         textColor=colors.HexColor('#1f2937'), leading=10, wordWrap='LTR')
+    _td_mono = ParagraphStyle('TDm', fontName='Courier', fontSize=7,
+                               textColor=colors.HexColor('#374151'), leading=10, wordWrap='LTR')
+    _td_debit  = ParagraphStyle('TDd', fontName='Helvetica-Bold', fontSize=7.5,
+                                 textColor=colors.HexColor('#dc2626'), leading=10,
+                                 alignment=TA_RIGHT, wordWrap='LTR')
+    _td_credit = ParagraphStyle('TDc', fontName='Helvetica-Bold', fontSize=7.5,
+                                 textColor=colors.HexColor('#16a34a'), leading=10,
+                                 alignment=TA_RIGHT, wordWrap='LTR')
+    _td_right  = ParagraphStyle('TDr', fontName='Helvetica', fontSize=7.5,
+                                 textColor=colors.HexColor('#1f2937'), leading=10,
+                                 alignment=TA_RIGHT, wordWrap='LTR')
+
+    # Colonnes : Date | Référence | Libellé | Débit | Crédit | Statut
+    # 186mm total : 20+28+76+22+22+18 = 186 mm
+    col_w = [20 * mm, 28 * mm, 76 * mm, 22 * mm, 22 * mm, 18 * mm]
+
+    header_row = [Paragraph(h, _th) for h in
+                  ['Date', 'Référence', 'Libellé / Description', 'Débit', 'Crédit', 'Statut']]
+    rows = [header_row]
+
     total_debit  = 0.0
     total_credit = 0.0
 
     for txn in transactions:
+        desc = (txn.description or txn.get_transaction_type_display())[:55]
         if txn.is_debit:
-            debit  = f"{txn.amount:,.2f}"
-            credit = ''
+            debit_cell  = Paragraph(f"{txn.amount:,.2f}", _td_debit)
+            credit_cell = Paragraph('', _td)
             total_debit += float(txn.amount)
         else:
-            debit  = ''
-            credit = f"{txn.amount:,.2f}"
+            debit_cell  = Paragraph('', _td)
+            credit_cell = Paragraph(f"{txn.amount:,.2f}", _td_credit)
             total_credit += float(txn.amount)
 
         rows.append([
-            txn.created_at.strftime('%d/%m/%Y'),
-            txn.reference,
-            (txn.description or txn.get_transaction_type_display())[:40],
-            debit,
-            credit,
-            txn.get_status_display(),
+            Paragraph(txn.created_at.strftime('%d/%m/%Y'), _td),
+            Paragraph(txn.reference, _td_mono),
+            Paragraph(desc, _td),
+            debit_cell,
+            credit_cell,
+            Paragraph(txn.get_status_display(), _td),
         ])
 
     # Ligne totaux
-    rows.append(['', '', 'TOTAL PÉRIODE', f"{total_debit:,.2f}", f"{total_credit:,.2f}", ''])
+    _td_tot = ParagraphStyle('Tot', fontName='Helvetica-Bold', fontSize=8,
+                              textColor=colors.HexColor('#1a3a5c'), leading=11,
+                              alignment=TA_RIGHT)
+    rows.append([
+        Paragraph('', _td), Paragraph('', _td),
+        Paragraph('<b>TOTAL PÉRIODE</b>',
+                  ParagraphStyle('TotL', fontName='Helvetica-Bold', fontSize=8,
+                                 textColor=colors.HexColor('#1a3a5c'), leading=11)),
+        Paragraph(f"{total_debit:,.2f}", _td_debit),
+        Paragraph(f"{total_credit:,.2f}", _td_credit),
+        Paragraph('', _td),
+    ])
 
-    col_w = [22 * mm, 30 * mm, 66 * mm, 22 * mm, 22 * mm, 18 * mm]
-    txn_table = Table(rows, colWidths=col_w, repeatRows=1)
-
-    debit_rows  = [i + 1 for i, r in enumerate(rows[1:]) if r[3] and r[3] != f"{total_debit:,.2f}"]
-    credit_rows = [i + 1 for i, r in enumerate(rows[1:]) if r[4] and r[4] != f"{total_credit:,.2f}"]
     n = len(rows)
-
-    cmd = [
-        # En-tête
-        ('BACKGROUND',    (0, 0),  (-1, 0),   primary),
-        ('TEXTCOLOR',     (0, 0),  (-1, 0),   colors.white),
-        ('FONTNAME',      (0, 0),  (-1, 0),   'Helvetica-Bold'),
-        ('FONTSIZE',      (0, 0),  (-1, 0),   7.5),
-        # Corps
-        ('FONTSIZE',      (0, 1),  (-1, -1),  7.8),
-        ('FONTNAME',      (0, 1),  (-1, -1),  'Helvetica'),
-        ('ROWBACKGROUNDS',(0, 1),  (-1, n-2), [colors.white, colors.HexColor('#f8fafc')]),
-        ('GRID',          (0, 0),  (-1, -1),  0.25, colors.HexColor('#e2e8f0')),
-        # Padding
-        ('TOPPADDING',    (0, 0),  (-1, -1),  5),
-        ('BOTTOMPADDING', (0, 0),  (-1, -1),  5),
-        ('LEFTPADDING',   (0, 0),  (-1, -1),  5),
-        ('RIGHTPADDING',  (0, 0),  (-1, -1),  5),
-        # Alignement montants
-        ('ALIGN',         (3, 0),  (4, -1),   'RIGHT'),
-        ('FONTNAME',      (3, 0),  (4, -1),   'Helvetica'),
-        # Ligne totaux
-        ('BACKGROUND',    (0, n-1),(-1, n-1), colors.HexColor('#eef4fb')),
-        ('FONTNAME',      (0, n-1),(-1, n-1), 'Helvetica-Bold'),
-        ('FONTSIZE',      (0, n-1),(-1, n-1), 8),
-        ('LINEABOVE',     (0, n-1),(-1, n-1), 1.2, primary),
-    ]
-    for r in debit_rows:
-        cmd.append(('TEXTCOLOR', (3, r), (3, r), colors.HexColor('#dc2626')))
-        cmd.append(('FONTNAME',  (3, r), (3, r), 'Helvetica-Bold'))
-    for r in credit_rows:
-        cmd.append(('TEXTCOLOR', (4, r), (4, r), colors.HexColor('#16a34a')))
-        cmd.append(('FONTNAME',  (4, r), (4, r), 'Helvetica-Bold'))
-
-    txn_table.setStyle(TableStyle(cmd))
+    txn_table = Table(rows, colWidths=col_w, repeatRows=1)
+    txn_table.setStyle(TableStyle([
+        ('BACKGROUND',    (0, 0),   (-1, 0),   primary),
+        ('ROWBACKGROUNDS',(0, 1),   (-1, n-2), [colors.white, colors.HexColor('#f8fafc')]),
+        ('BACKGROUND',    (0, n-1), (-1, n-1), colors.HexColor('#eef4fb')),
+        ('LINEABOVE',     (0, n-1), (-1, n-1), 1.2, primary),
+        ('GRID',          (0, 0),   (-1, -1),  0.25, colors.HexColor('#dde3ed')),
+        ('TOPPADDING',    (0, 0),   (-1, -1),  5),
+        ('BOTTOMPADDING', (0, 0),   (-1, -1),  5),
+        ('LEFTPADDING',   (0, 0),   (-1, -1),  4),
+        ('RIGHTPADDING',  (0, 0),   (-1, -1),  4),
+        ('VALIGN',        (0, 0),   (-1, -1),  'TOP'),
+    ]))
     story.append(txn_table)
     story.append(Spacer(1, 6 * mm))
 
@@ -1177,24 +1219,25 @@ def generate_statement_pdf(bank_account, transactions, date_from, date_to):
     bal_color = '#16a34a' if bank_account.balance >= 0 else '#dc2626'
     balance_tbl = Table(
         [[Paragraph(
-            f'<font name="Helvetica" size="8.5" color="#64748b">'
-            f'Solde au {date_to.strftime("%d/%m/%Y")}</font>',
-            ParagraphStyle('BL', alignment=TA_RIGHT),
+              f'<font name="Helvetica" size="8" color="#64748b">'
+              f'Solde au {date_to.strftime("%d/%m/%Y")}</font>',
+              ParagraphStyle('BL', alignment=TA_RIGHT, leading=12),
           ),
           Paragraph(
-            f'<font name="Helvetica-Bold" size="14" color="{bal_color}">'
-            f'{bank_account.balance:,.2f} {bank_account.currency}</font>',
-            ParagraphStyle('BV', alignment=TA_RIGHT),
+              f'<font name="Helvetica-Bold" size="13" color="{bal_color}">'
+              f'{bank_account.balance:,.2f} {bank_account.currency}</font>',
+              ParagraphStyle('BV', alignment=TA_RIGHT, leading=16),
           )]],
-        colWidths=[120 * mm, 60 * mm],
+        colWidths=[CONTENT_W * 0.55, CONTENT_W * 0.45],
     )
     balance_tbl.setStyle(TableStyle([
         ('BACKGROUND',    (0, 0), (-1, -1), colors.HexColor('#f8fafc')),
         ('BOX',           (0, 0), (-1, -1), 0.8, primary),
+        ('LINEBEFORE',    (1, 0), (1, -1),  0.5, colors.HexColor('#c8d4e4')),
         ('TOPPADDING',    (0, 0), (-1, -1), 10),
         ('BOTTOMPADDING', (0, 0), (-1, -1), 10),
-        ('LEFTPADDING',   (0, 0), (-1, -1), 12),
-        ('RIGHTPADDING',  (0, 0), (-1, -1), 12),
+        ('LEFTPADDING',   (0, 0), (-1, -1), 10),
+        ('RIGHTPADDING',  (0, 0), (-1, -1), 10),
         ('VALIGN',        (0, 0), (-1, -1), 'MIDDLE'),
     ]))
     story.append(balance_tbl)
