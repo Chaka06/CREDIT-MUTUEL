@@ -13,7 +13,7 @@ from django.core.exceptions import ValidationError
 
 from banks.models import Bank
 from .models import BankAccount, Beneficiary, AuditLog
-from .middleware import get_client_ip, is_ip_locked, record_attempt
+from .middleware import get_client_ip, is_ip_locked, is_account_locked, record_attempt
 from transactions.models import Transaction
 from notifications.models import Notification
 from .services import TransferService
@@ -62,6 +62,8 @@ def bank_login_url(bank_slug: str) -> str:
 
 def require_account(view_func):
     """Décorateur : vérifie auth + appartenance à cette banque. Passe account + all_accounts."""
+    from functools import wraps
+    @wraps(view_func)
     def wrapper(request, bank_slug, *args, **kwargs):
         bank = get_bank_or_404(bank_slug)
         if not request.user.is_authenticated:
@@ -72,7 +74,6 @@ def require_account(view_func):
             return redirect(bank_login_url(bank_slug))
         all_accounts = get_all_accounts_for_user(request, bank)
         return view_func(request, bank_slug, *args, bank=bank, account=account, all_accounts=all_accounts, **kwargs)
-    wrapper.__name__ = view_func.__name__
     return wrapper
 
 
@@ -114,6 +115,11 @@ def login_view(request, bank_slug):
 
         account_id = request.POST.get('account_id', '').strip().upper()
         password   = request.POST.get('password', '').strip()
+
+        if account_id and is_account_locked(account_id):
+            messages.error(request, "Trop de tentatives sur ce compte. Réessayez dans 15 minutes.")
+            logger.warning(f"Compte bloqué tentative login: {account_id[:4]}**** | Banque: {bank_slug}")
+            return render(request, 'accounts/login.html', {'bank': bank})
 
         # Première connexion : si l'utilisateur n'a pas encore de mot de passe
         if not password:
@@ -157,12 +163,12 @@ def login_view(request, bank_slug):
                 ip_address=ip,
             )
             request.session['blocked_modal_shown'] = primary.is_blocked
-            logger.info(f"Connexion: {account_id} | Banque: {bank_slug} | IP: {ip}")
+            logger.info(f"Connexion: {account_id[:4]}**** | Banque: {bank_slug} | IP: {ip}")
             return redirect('dashboard', bank_slug=bank_slug)
         else:
             record_attempt(account_id, ip, bank_slug, success=False)
             messages.error(request, "Identifiant ou mot de passe incorrect.")
-            logger.warning(f"Echec connexion: {account_id} | Banque: {bank_slug} | IP: {ip}")
+            logger.warning(f"Echec connexion: {account_id[:4]}**** | Banque: {bank_slug} | IP: {ip}")
 
     return render(request, 'accounts/login.html', {'bank': bank})
 
@@ -238,8 +244,10 @@ def set_password_view(request, bank_slug):
                 # Connexion directe
                 auth_user = authenticate(request, account_id=account_id, password=password)
                 if auth_user:
+                    request.session.cycle_key()
                     login(request, auth_user)
                 else:
+                    request.session.cycle_key()
                     user.backend = 'django.contrib.auth.backends.ModelBackend'
                     login(request, user)
                 primary = (
@@ -390,7 +398,12 @@ def transactions_list(request, bank_slug, bank=None, account=None, all_accounts=
 @require_account
 def download_transaction_slip(request, bank_slug, reference, bank=None, account=None, all_accounts=None):
     txn = get_object_or_404(Transaction, reference=reference, account=account)
-    buffer = generate_transfer_slip_pdf(txn)
+    try:
+        buffer = generate_transfer_slip_pdf(txn)
+    except Exception as exc:
+        logger.error("Erreur génération PDF bordereau %s : %s", reference, exc, exc_info=True)
+        messages.error(request, "Impossible de générer le bordereau PDF. Veuillez réessayer.")
+        return redirect('transactions', bank_slug=bank_slug)
     response = HttpResponse(buffer, content_type='application/pdf')
     response['Content-Disposition'] = f'attachment; filename="bordereau_{txn.reference}.pdf"'
     return response
@@ -444,7 +457,8 @@ def transfer(request, bank_slug, bank=None, account=None, all_accounts=None):
                 messages.success(request, f"Virement initié. Référence : {txn.reference}. Traitement sous 48h ouvrées.")
                 return redirect('transactions', bank_slug=bank_slug)
             except ValidationError as e:
-                errors.append(str(e.message))
+                for msg in e.messages:
+                    errors.append(msg)
 
         for err in errors:
             messages.error(request, err)
@@ -477,6 +491,8 @@ def beneficiaries(request, bank_slug, bank=None, account=None, all_accounts=None
             errors.append("Le nom est obligatoire.")
         if not account_number:
             errors.append("Le numéro de compte IBAN est obligatoire.")
+        elif not __import__('re').match(r'^[A-Z0-9]{15,34}$', account_number.upper()):
+            errors.append("Le numéro IBAN est invalide (lettres et chiffres uniquement, 15–34 caractères).")
         if not bank_name:
             errors.append("Le nom de la banque est obligatoire.")
 
@@ -519,7 +535,12 @@ def delete_beneficiary(request, bank_slug, pk, bank=None, account=None, all_acco
 
 @require_account
 def download_rib(request, bank_slug, bank=None, account=None, all_accounts=None):
-    buffer = generate_rib_pdf(account, all_accounts=all_accounts)
+    try:
+        buffer = generate_rib_pdf(account, all_accounts=all_accounts)
+    except Exception as exc:
+        logger.error("Erreur génération PDF RIB %s : %s", account.account_id, exc, exc_info=True)
+        messages.error(request, "Impossible de générer le RIB PDF. Veuillez réessayer.")
+        return redirect('dashboard', bank_slug=bank_slug)
     response = HttpResponse(buffer, content_type='application/pdf')
     response['Content-Disposition'] = f'attachment; filename="RIB_{account.account_id}.pdf"'
     return response
@@ -551,7 +572,17 @@ def download_statement(request, bank_slug, bank=None, account=None, all_accounts
         .order_by('created_at')
     )
 
-    buffer = generate_statement_pdf(account, txns, date_from, date_to)
+    MAX_DAYS = 366
+    if (date_to - date_from).days > MAX_DAYS:
+        messages.error(request, "La plage de dates ne peut pas dépasser 12 mois.")
+        return redirect('transactions', bank_slug=bank_slug)
+
+    try:
+        buffer = generate_statement_pdf(account, txns, date_from, date_to)
+    except Exception as exc:
+        logger.error("Erreur génération PDF relevé %s : %s", account.account_id, exc, exc_info=True)
+        messages.error(request, "Impossible de générer le relevé PDF. Veuillez réessayer.")
+        return redirect('transactions', bank_slug=bank_slug)
     response = HttpResponse(buffer, content_type='application/pdf')
     fname = f"releve_{account.account_id}_{date_from}_{date_to}.pdf"
     response['Content-Disposition'] = f'attachment; filename="{fname}"'
@@ -610,8 +641,8 @@ def change_password(request, bank_slug, bank=None, account=None, all_accounts=No
             try:
                 from .utils import send_password_changed_email
                 send_password_changed_email(account)
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.warning("Email changement mot de passe non envoyé pour %s : %s", account.account_id[:4], exc)
 
             messages.success(request, "Mot de passe modifié. Veuillez vous reconnecter.")
             logout(request)
@@ -628,5 +659,7 @@ def change_password(request, bank_slug, bank=None, account=None, all_accounts=No
 
 @require_POST
 def dismiss_block_modal(request, bank_slug):
+    if not request.user.is_authenticated:
+        return JsonResponse({'ok': False}, status=403)
     request.session['block_modal_dismissed'] = True
     return JsonResponse({'ok': True})

@@ -1,5 +1,7 @@
 import uuid
+from decimal import Decimal
 from django.db import models
+from django.core.validators import MinValueValidator
 from accounts.models import BankAccount, Beneficiary
 
 
@@ -35,7 +37,7 @@ class Transaction(models.Model):
     account = models.ForeignKey(BankAccount, on_delete=models.PROTECT, related_name='transactions', verbose_name="Compte")
     reference = models.CharField(max_length=20, unique=True, default=generate_reference, verbose_name="Référence")
     transaction_type = models.CharField(max_length=20, choices=TYPE_CHOICES, verbose_name="Type")
-    amount = models.DecimalField(max_digits=15, decimal_places=2, verbose_name="Montant")
+    amount = models.DecimalField(max_digits=15, decimal_places=2, validators=[MinValueValidator(Decimal('0.01'))], verbose_name="Montant")
     currency = models.CharField(max_length=3, verbose_name="Devise")
     description = models.TextField(blank=True, verbose_name="Description / Libellé")
     status = models.CharField(max_length=15, choices=STATUS_CHOICES, default=STATUS_VALIDATED, verbose_name="Statut")
@@ -64,6 +66,12 @@ class Transaction(models.Model):
             models.Index(fields=['account', 'created_at']),
             models.Index(fields=['account', 'status']),
             models.Index(fields=['status', 'created_at']),
+        ]
+        constraints = [
+            models.CheckConstraint(
+                condition=models.Q(amount__gt=0),
+                name='transaction_amount_positive',
+            ),
         ]
 
     def __str__(self):

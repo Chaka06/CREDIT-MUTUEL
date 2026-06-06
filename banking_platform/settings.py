@@ -30,6 +30,14 @@ if _custom_domain:
         if _d not in ALLOWED_HOSTS:
             ALLOWED_HOSTS.append(_d)
 
+# ── CSRF Trusted Origins ───────────────────────────────────────────────────
+CSRF_TRUSTED_ORIGINS = ['https://*.vercel.app']
+if _custom_domain:
+    CSRF_TRUSTED_ORIGINS += [f'https://{_custom_domain}', f'https://www.{_custom_domain}']
+_vercel_url_full = os.getenv('VERCEL_URL', '')
+if _vercel_url_full:
+    CSRF_TRUSTED_ORIGINS.append(f'https://{_vercel_url_full}')
+
 # ── Applications ───────────────────────────────────────────────────────────
 INSTALLED_APPS = [
     'django.contrib.admin',
@@ -91,7 +99,7 @@ if _db_host and _db_password and _db_password != _db_placeholder:
             'USER':     os.getenv('DB_USER', 'postgres'),
             'PASSWORD': _db_password,
             'HOST':     _db_host,
-            'PORT':     os.getenv('DB_PORT', '5432'),
+            'PORT':     os.getenv('DB_PORT', '6543'),
             'OPTIONS':  {'sslmode': 'require'},
             'CONN_MAX_AGE': 0,
             'DISABLE_SERVER_SIDE_CURSORS': True,
@@ -108,8 +116,12 @@ else:
 
 # ── Authentification ───────────────────────────────────────────────────────
 AUTH_USER_MODEL = 'accounts.BankUser'
-# PIN à 6 chiffres — validation métier dans les vues, pas ici
-AUTH_PASSWORD_VALIDATORS = []
+AUTH_PASSWORD_VALIDATORS = [
+    {
+        'NAME': 'django.contrib.auth.password_validation.MinimumLengthValidator',
+        'OPTIONS': {'min_length': 6},
+    },
+]
 
 # ── Internationalisation ───────────────────────────────────────────────────
 LANGUAGE_CODE = 'fr-fr'
@@ -161,6 +173,7 @@ EMAIL_HOST_USER     = os.getenv('BREVO_SMTP_LOGIN', '')
 EMAIL_HOST_PASSWORD = os.getenv('BREVO_SMTP_KEY', '')
 DEFAULT_FROM_EMAIL  = os.getenv('DEFAULT_FROM_EMAIL', 'no_reply@mutuelspace.com')
 SITE_URL            = os.getenv('SITE_URL', 'http://localhost:8000')
+EMAIL_TIMEOUT       = 8
 
 # ── Chiffrement champs sensibles (Fernet) ─────────────────────────────────
 FIELD_ENCRYPTION_KEY = os.getenv('FIELD_ENCRYPTION_KEY', '')
@@ -185,12 +198,20 @@ if not DEBUG:
     X_FRAME_OPTIONS              = 'DENY'
 
 # ── Cache ──────────────────────────────────────────────────────────────────
-CACHES = {
-    'default': {
-        'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
-        'LOCATION': 'banking-platform',
+# En serverless Vercel, LocMemCache ne se partage pas entre instances.
+if DEBUG:
+    CACHES = {
+        'default': {
+            'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
+            'LOCATION': 'banking-platform',
+        }
     }
-}
+else:
+    CACHES = {
+        'default': {
+            'BACKEND': 'django.core.cache.backends.dummy.DummyCache',
+        }
+    }
 
 # ── Logging ────────────────────────────────────────────────────────────────
 _log_handlers: list = ['console']

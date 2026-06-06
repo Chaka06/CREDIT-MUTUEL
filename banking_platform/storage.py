@@ -37,6 +37,7 @@ class SupabaseStorage(Storage):
             f"{self._base()}/object/{self._bucket}/{name}",
             headers=self._auth(content_type),
             data=data,
+            timeout=10,
         )
         if resp.status_code not in (200, 201):
             raise Exception(f"Supabase upload failed [{resp.status_code}]: {resp.text}")
@@ -46,6 +47,7 @@ class SupabaseStorage(Storage):
         resp = requests.head(
             f"{self._base()}/object/{self._bucket}/{name}",
             headers={'Authorization': f'Bearer {self._key}'},
+            timeout=10,
         )
         return resp.status_code == 200
 
@@ -53,16 +55,20 @@ class SupabaseStorage(Storage):
         return f"{self._url}/storage/v1/object/public/{self._bucket}/{name}"
 
     def delete(self, name):
-        requests.delete(
+        resp = requests.delete(
             f"{self._base()}/object/{self._bucket}",
             headers={'Authorization': f'Bearer {self._key}', 'Content-Type': 'application/json'},
             json={'prefixes': [name]},
+            timeout=10,
         )
+        if resp.status_code not in (200, 204):
+            raise Exception(f"Supabase delete failed [{resp.status_code}]: {resp.text}")
 
     def size(self, name):
         resp = requests.head(
             f"{self._base()}/object/{self._bucket}/{name}",
             headers={'Authorization': f'Bearer {self._key}'},
+            timeout=10,
         )
         if resp.status_code == 200:
             return int(resp.headers.get('content-length', 0))

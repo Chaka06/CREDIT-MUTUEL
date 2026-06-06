@@ -1,6 +1,9 @@
 import json
+import logging
 from decimal import Decimal
 from django.contrib import admin
+
+logger = logging.getLogger('banking.admin')
 from django.contrib.auth.admin import UserAdmin
 from django.utils.html import format_html
 from django.utils.safestring import mark_safe
@@ -421,8 +424,13 @@ class BankAccountAdmin(admin.ModelAdmin):
 
                 return
 
-            except (ValidationError, Exception) as e:
-                messages.error(request, f"Erreur lors de la création : {e}")
+            except ValidationError as e:
+                messages.error(request, f"Erreur de validation : {'; '.join(e.messages)}")
+                request._save_error = True
+                return
+            except Exception as e:
+                logger.exception("Erreur inattendue création compte pour %s", getattr(obj, 'email', '?'))
+                messages.error(request, f"Erreur inattendue lors de la création : {e}")
                 request._save_error = True
                 return
 

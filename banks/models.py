@@ -41,7 +41,7 @@ class Bank(models.Model):
         help_text="URL directe vers l'image de partage (prioritaire sur le fichier uploadé).",
     )
 
-    is_active = models.BooleanField(default=True, verbose_name="Banque active")
+    is_active = models.BooleanField(default=True, db_index=True, verbose_name="Banque active")
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

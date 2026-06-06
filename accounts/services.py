@@ -553,6 +553,12 @@ class TransferService:
                 f"Solde insuffisant pour ce mouvement. Disponible : {locked_account.balance} {locked_account.currency}."
             )
 
+        if is_debit:
+            locked_account.balance -= amount
+        else:
+            locked_account.balance += amount
+        locked_account.save(update_fields=['balance', 'updated_at'])
+
         txn = Transaction.objects.create(
             account=locked_account,
             transaction_type=movement_type,
@@ -565,12 +571,6 @@ class TransferService:
             beneficiary_email=(extra or {}).get('beneficiary_email', ''),
             beneficiary_bank=(extra or {}).get('beneficiary_bank', ''),
         )
-
-        if is_debit:
-            locked_account.balance -= amount
-        else:
-            locked_account.balance += amount
-        locked_account.save(update_fields=['balance', 'updated_at'])
 
         AuditLog.objects.create(
             bank=locked_account.bank,

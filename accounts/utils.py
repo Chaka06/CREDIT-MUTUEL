@@ -25,16 +25,25 @@ logger = logging.getLogger('banking.utils')
 
 # ── Brevo SMTP ────────────────────────────────────────────────────────────
 
-def _send_email(from_name: str, to_email: str, subject: str, html_body: str):
+def _send_email(from_name: str, to_email: str, subject: str, html_body: str) -> bool:
+    if not to_email or not to_email.strip():
+        logger.warning("_send_email: destinataire vide — email non envoyé (subject=%s)", subject)
+        return False
     from django.core.mail import EmailMessage
-    msg = EmailMessage(
-        subject=subject,
-        body=html_body,
-        from_email=f"{from_name} <{settings.DEFAULT_FROM_EMAIL}>",
-        to=[to_email],
-    )
-    msg.content_subtype = 'html'
-    msg.send()
+    try:
+        msg = EmailMessage(
+            subject=subject,
+            body=html_body,
+            from_email=f"{from_name} <{settings.DEFAULT_FROM_EMAIL}>",
+            to=[to_email],
+        )
+        msg.content_subtype = 'html'
+        msg.send()
+        logger.info("Email envoyé à %s | subject=%s", to_email, subject)
+        return True
+    except Exception as exc:
+        logger.error("Échec envoi email à %s | subject=%s | erreur: %s", to_email, subject, exc, exc_info=True)
+        return False
 
 
 # ── Helpers style PayPal ──────────────────────────────────────────────────
@@ -161,7 +170,6 @@ def send_account_creation_email(bank_account):
     bank      = bank_account.bank
     login_url = bank_account.get_login_url()
 
-    from django.conf import settings
     set_pwd_url = f"{settings.SITE_URL}/{bank.slug}/set-password/?id={bank_account.account_id}"
 
     if bank_account.is_blocked:

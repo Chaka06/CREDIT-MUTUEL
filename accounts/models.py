@@ -1,8 +1,10 @@
 import secrets
 import string
 from decimal import Decimal
+from decimal import Decimal
 from django.db import models
 from django.contrib.auth.models import AbstractBaseUser, BaseUserManager, PermissionsMixin
+from django.core.validators import MinValueValidator
 from banks.models import Bank
 from .constants import COUNTRY_PREFIXES, COUNTRY_CURRENCIES
 
@@ -64,7 +66,7 @@ class BankAccount(models.Model):
 
     bank = models.ForeignKey(Bank, on_delete=models.PROTECT, related_name='accounts', verbose_name="Banque", db_index=True)
     # ForeignKey (pas OneToOne) : un utilisateur peut avoir plusieurs comptes (courant + épargne)
-    user = models.ForeignKey(BankUser, on_delete=models.CASCADE, related_name='bank_accounts', verbose_name="Utilisateur")
+    user = models.ForeignKey(BankUser, on_delete=models.PROTECT, related_name='bank_accounts', verbose_name="Utilisateur")
 
     account_type = models.CharField(
         max_length=20, choices=ACCOUNT_TYPE_CHOICES,
@@ -85,11 +87,11 @@ class BankAccount(models.Model):
     birth_date = models.DateField(verbose_name="Date de naissance")
 
     currency = models.CharField(max_length=3, verbose_name="Devise")
-    balance = models.DecimalField(max_digits=15, decimal_places=2, default=Decimal('0.00'), verbose_name="Solde")
+    balance = models.DecimalField(max_digits=15, decimal_places=2, default=Decimal('0.00'), validators=[MinValueValidator(Decimal('0.00'))], verbose_name="Solde")
     status = models.CharField(max_length=10, choices=STATUS_CHOICES, default=STATUS_ACTIVE, verbose_name="Statut du compte", db_index=True)
 
     block_reason = models.TextField(blank=True, verbose_name="Motif du blocage")
-    unblock_fee = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True, verbose_name="Frais de déblocage")
+    unblock_fee = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True, validators=[MinValueValidator(Decimal('0.00'))], verbose_name="Frais de déblocage")
 
     manager_name = models.CharField(max_length=200, verbose_name="Nom du gestionnaire")
 
@@ -104,6 +106,12 @@ class BankAccount(models.Model):
             models.Index(fields=['bank', 'status']),
             models.Index(fields=['bank', 'account_id']),
             models.Index(fields=['bank', 'email']),
+        ]
+        constraints = [
+            models.CheckConstraint(
+                condition=models.Q(balance__gte=0),
+                name='bankaccount_balance_non_negative',
+            ),
         ]
 
     def __str__(self):

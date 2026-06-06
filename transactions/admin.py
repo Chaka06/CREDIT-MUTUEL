@@ -26,6 +26,14 @@ class TransactionAdmin(admin.ModelAdmin):
     ordering = ['-created_at']
     date_hierarchy = 'created_at'
 
+    def get_readonly_fields(self, request, obj=None):
+        base = list(self.readonly_fields)
+        if obj and obj.status != 'pending':
+            base += ['transaction_type', 'amount', 'currency', 'account',
+                     'beneficiary', 'beneficiary_name', 'beneficiary_iban',
+                     'beneficiary_email', 'beneficiary_bank']
+        return base
+
     fieldsets = (
         ('Identification', {
             'fields': ('reference', 'account', 'account_balance_info', 'account_iban_display', 'created_at', 'validated_at')
