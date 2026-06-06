@@ -5,10 +5,11 @@ from django.contrib import messages
 from django.core.exceptions import ValidationError
 from .models import Transaction
 from accounts.services import TransferService
+from accounts.admin import SafeAdminLogMixin
 
 
 @admin.register(Transaction)
-class TransactionAdmin(admin.ModelAdmin):
+class TransactionAdmin(SafeAdminLogMixin, admin.ModelAdmin):
     list_display = [
         'reference', 'account_display', 'bank_badge',
         'type_badge', 'amount_display', 'status_badge', 'created_at'

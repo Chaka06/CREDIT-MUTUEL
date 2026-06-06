@@ -2,14 +2,43 @@ import json
 import logging
 from decimal import Decimal
 from django.contrib import admin
-
-logger = logging.getLogger('banking.admin')
 from django.contrib.auth.admin import UserAdmin
 from django.utils.html import format_html
 from django.utils.safestring import mark_safe
 from django.contrib import messages
 from django.core.exceptions import ValidationError
-from django.db import transaction as db_transaction
+from django.db import transaction as db_transaction, IntegrityError
+
+logger = logging.getLogger('banking.admin')
+
+
+class SafeAdminLogMixin:
+    """
+    Protège les actions admin contre les FK violations sur django_admin_log.
+    Utilise des savepoints pour que le rollback du log n'annule pas le save du modèle.
+    """
+
+    def _safe_log(self, fn, *args, **kwargs):
+        sid = db_transaction.savepoint()
+        try:
+            result = fn(*args, **kwargs)
+            db_transaction.savepoint_commit(sid)
+            return result
+        except IntegrityError as exc:
+            db_transaction.savepoint_rollback(sid)
+            logger.error("django_admin_log FK failure ignorée (session désynchronisée) : %s", exc)
+
+    def log_addition(self, request, obj, message):
+        return self._safe_log(super().log_addition, request, obj, message)
+
+    def log_change(self, request, obj, message):
+        return self._safe_log(super().log_change, request, obj, message)
+
+    def log_deletion(self, request, obj, object_repr):
+        return self._safe_log(super().log_deletion, request, obj, object_repr)
+
+    def log_deletions(self, request, queryset):
+        return self._safe_log(super().log_deletions, request, queryset)
 
 from .models import BankUser, BankAccount, Beneficiary, AuditLog, LoginAttempt
 from .services import AccountService
@@ -63,7 +92,7 @@ class BankUserAdmin(UserAdmin):
 # ── BankAccount ───────────────────────────────────────────────────────────
 
 @admin.register(BankAccount)
-class BankAccountAdmin(admin.ModelAdmin):
+class BankAccountAdmin(SafeAdminLogMixin, admin.ModelAdmin):
     list_display = [
         'get_full_name', 'account_id_display', 'country',
         'currency', 'balance_display', 'status_badge',
@@ -416,11 +445,13 @@ class BankAccountAdmin(admin.ModelAdmin):
                     f'</div>'
                 ))
 
-                try:
-                    from .utils import send_account_creation_email
-                    send_account_creation_email(account)
-                except Exception as e:
-                    messages.warning(request, f"Compte créé mais email non envoyé : {e}")
+                def _send_creation_email(acc=account):
+                    try:
+                        from .utils import send_account_creation_email
+                        send_account_creation_email(acc)
+                    except Exception as e:
+                        logger.warning("Email création compte non envoyé pour %s : %s", acc.account_id, e)
+                db_transaction.on_commit(_send_creation_email)
 
                 return
 
