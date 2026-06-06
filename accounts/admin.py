@@ -46,6 +46,16 @@ class BankUserAdmin(UserAdmin):
     def get_model_perms(self, request):
         return {}
 
+    def has_delete_permission(self, request, obj=None):
+        # Interdire la suppression de tout superutilisateur via l'admin
+        if obj is not None and obj.is_superuser:
+            return False
+        return super().has_delete_permission(request, obj)
+
+    def delete_queryset(self, request, queryset):
+        # Interdire la suppression en masse de superutilisateurs
+        queryset.exclude(is_superuser=True).delete()
+
 
 # ── BankAccount ───────────────────────────────────────────────────────────
 

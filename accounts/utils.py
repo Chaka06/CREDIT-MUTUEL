@@ -1,5 +1,5 @@
 """
-Utilitaires : génération de PDFs et envoi d'emails via Resend.
+Utilitaires : génération de PDFs et envoi d'emails via Brevo (SMTP).
 Toute la logique de génération d'identifiants est dans services.py.
 """
 import io
@@ -23,17 +23,18 @@ import requests as _requests
 logger = logging.getLogger('banking.utils')
 
 
-# ── Resend ────────────────────────────────────────────────────────────────
+# ── Brevo SMTP ────────────────────────────────────────────────────────────
 
 def _send_email(from_name: str, to_email: str, subject: str, html_body: str):
-    import resend
-    resend.api_key = settings.RESEND_API_KEY
-    resend.Emails.send({
-        "from": f"{from_name} <{settings.DEFAULT_FROM_EMAIL}>",
-        "to": [to_email],
-        "subject": subject,
-        "html": html_body,
-    })
+    from django.core.mail import EmailMessage
+    msg = EmailMessage(
+        subject=subject,
+        body=html_body,
+        from_email=f"{from_name} <{settings.DEFAULT_FROM_EMAIL}>",
+        to=[to_email],
+    )
+    msg.content_subtype = 'html'
+    msg.send()
 
 
 # ── Helpers style PayPal ──────────────────────────────────────────────────

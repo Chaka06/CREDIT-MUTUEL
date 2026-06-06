@@ -38,6 +38,11 @@ class BankUser(AbstractBaseUser, PermissionsMixin):
         verbose_name = "Utilisateur"
         verbose_name_plural = "Utilisateurs"
 
+    def delete(self, *args, **kwargs):
+        if self.is_superuser:
+            raise ValueError("Un superutilisateur ne peut pas être supprimé.")
+        super().delete(*args, **kwargs)
+
     def __str__(self):
         return self.account_id
 
