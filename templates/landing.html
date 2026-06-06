@@ -356,29 +356,83 @@
             max-width: 1240px; margin: 0 auto;
         }
 
+        /* ── Feature showcase sections ─────────────────────────── */
+        .feature-section {
+            padding: 80px 20px;
+            border-bottom: 1px solid var(--cm-border);
+        }
+        .feature-section.feature-alt { background: var(--cm-lgray); }
+        .feature-inner {
+            max-width: 1240px; margin: 0 auto;
+            display: grid; grid-template-columns: 1fr 1fr;
+            gap: 72px; align-items: center;
+        }
+        /* Image à gauche, texte à droite */
+        .feature-inner.reverse .feature-image { order: -1; }
+        .feature-eyebrow {
+            font-size: 13px; font-weight: 700; text-transform: uppercase;
+            letter-spacing: .12em; color: var(--cm-red); margin-bottom: 14px;
+            display: flex; align-items: center; gap: 8px;
+        }
+        .feature-eyebrow::before {
+            content: ''; display: block; width: 24px; height: 2px; background: var(--cm-red);
+        }
+        .feature-title {
+            font-size: 1.95rem; font-weight: 700; color: var(--cm-dark);
+            line-height: 1.22; letter-spacing: -.3px; margin-bottom: 16px;
+        }
+        .feature-title .red { color: var(--cm-red); }
+        .feature-desc {
+            font-size: 1.05rem; color: var(--cm-gray); line-height: 1.72; margin-bottom: 24px;
+        }
+        .feature-bullets { list-style: none; display: flex; flex-direction: column; gap: 11px; }
+        .feature-bullets li {
+            display: flex; align-items: flex-start; gap: 10px;
+            font-size: 16px; color: var(--cm-dark); line-height: 1.5;
+        }
+        .feature-bullets li::before {
+            content: ''; display: block; min-width: 8px; height: 8px;
+            background: var(--cm-red); border-radius: 50%; flex-shrink: 0; margin-top: 5px;
+        }
+        .feature-image {
+            border-radius: 14px; overflow: hidden;
+            box-shadow: 0 24px 64px rgba(0,0,0,.13), 0 4px 16px rgba(0,0,0,.07);
+            position: relative;
+        }
+        .feature-image::before {
+            content: ''; position: absolute; inset: -1px;
+            border-radius: 14px; border: 1px solid rgba(0,0,0,.06);
+            pointer-events: none; z-index: 1;
+        }
+        .feature-image img {
+            width: 100%; height: auto; display: block;
+            max-height: 520px; object-fit: cover; object-position: top;
+        }
+
         /* ── Responsive tablette ───────────────────────────────── */
         @media (max-width: 1024px) {
             .hero-inner { grid-template-columns: 1fr; }
-            .hero-right { display: none; }
-            .hero-left { padding: 48px 0; }
+            /* Hero image visible en tablette (en dessous du texte) */
+            .hero-right { min-height: 300px; }
+            .hero-left { padding: 48px 0 32px; }
             .kpi-inner { grid-template-columns: repeat(2,1fr); }
             .kpi-item:nth-child(2) { border-right: none; }
-            .services-grid { grid-template-columns: 1fr; }
+            .services-grid { grid-template-columns: 1fr 1fr; }
             .avantages-grid { grid-template-columns: 1fr; }
             .secu-grid { grid-template-columns: 1fr 1fr; }
             .footer-main { grid-template-columns: 1fr 1fr; }
             .nav-links { display: none; }
             .nav-burger { display: flex; align-items: center; justify-content: center; }
-            /* Cacher "Mon espace client" texte — juste icône sur tablette */
             .btn-connexion .btn-connexion-label { display: none; }
             .btn-connexion { padding: 10px 12px; }
+            /* Feature : image sous le texte en tablette */
+            .feature-inner { grid-template-columns: 1fr; gap: 36px; }
+            .feature-title { font-size: 1.65rem; }
         }
 
         /* ── Responsive mobile ──────────────────────────────────── */
         @media (max-width: 768px) {
             html { font-size: 16px; }
-
-            /* Top bar : masquée sur mobile */
             .top-bar { display: none; }
 
             /* Navbar */
@@ -387,13 +441,14 @@
             .nav-logo img { height: 36px; width: 36px; }
             .nav-logo-text .credit,
             .nav-logo-text .mutuel { font-size: 16px; }
-
-            /* Bouton connexion : masqué sur mobile (dans le menu hamburger) */
             .btn-connexion { display: none; }
 
-            /* Hero */
-            .hero-left { padding: 36px 0; }
-            .hero-title { font-size: 1.7rem; }
+            /* Hero : image visible sur mobile avec hauteur réduite */
+            .hero-inner { gap: 0; }
+            .hero-left { padding: 32px 0 20px; }
+            .hero-right { min-height: 220px; max-height: 260px; overflow: hidden; }
+            .hero-right img { height: 100%; object-fit: cover; }
+            .hero-title { font-size: 1.65rem; }
             .hero-text { font-size: 1rem; }
             .btn-primary-cm,
             .btn-secondary-cm { padding: 12px 20px; font-size: 15px; width: 100%; justify-content: center; }
@@ -408,10 +463,19 @@
             .kpi-label { font-size: 13px; }
 
             /* Sections */
-            .section { padding: 40px 16px; }
-            .section-title { font-size: 1.6rem; }
-            .stats-block { padding: 28px 24px; }
-            .stats-block-num { font-size: 2.4rem; }
+            .section { padding: 36px 16px; }
+            .section-title { font-size: 1.5rem; }
+            .stats-block { padding: 28px 20px; }
+            .stats-block-num { font-size: 2.2rem; }
+            .services-grid { grid-template-columns: 1fr; }
+
+            /* Feature */
+            .feature-section { padding: 40px 16px; }
+            .feature-inner { gap: 28px; }
+            .feature-title { font-size: 1.4rem; }
+            .feature-desc { font-size: .95rem; }
+            .feature-image img { max-height: 280px; object-position: top center; }
+            .feature-bullets li { font-size: 15px; }
 
             /* Sécurité */
             .secu-grid { grid-template-columns: 1fr; }
@@ -423,8 +487,10 @@
 
         @media (max-width: 400px) {
             html { font-size: 15px; }
-            .hero-title { font-size: 1.5rem; }
+            .hero-title { font-size: 1.4rem; }
+            .hero-right { min-height: 180px; max-height: 200px; }
             .kpi-num { font-size: 1.5rem; }
+            .feature-title { font-size: 1.25rem; }
         }
 
         /* Mobile nav menu */
@@ -563,7 +629,8 @@
         <div class="hero-right" style="background:none;padding:0;">
             <img
                 src="https://www.agence-evenementielle-innovevents.fr/wp-content/uploads/2020/04/organisation-evenement-credit-mutuel.jpg"
-                alt="Crédit Mutuel — événement"
+                alt="Crédit Mutuel — votre banque en ligne"
+                loading="eager"
                 style="width:100%;height:100%;object-fit:cover;object-position:center;display:block;min-height:440px;"
             >
         </div>
@@ -680,6 +747,74 @@
                     <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/></svg>
                 </span>
             </div>
+        </div>
+    </div>
+</section>
+
+
+<!-- ── Feature 1 : Visualisation des dépenses ─────────────────────────── -->
+<section class="feature-section">
+    <div class="feature-inner">
+        <!-- Texte -->
+        <div class="feature-text">
+            <p class="feature-eyebrow">Gestion budgétaire</p>
+            <h2 class="feature-title">
+                Visualisez vos dépenses<br>
+                en toute <span class="red">clarté.</span>
+            </h2>
+            <p class="feature-desc">
+                Consultez l'intégralité de vos mouvements — entrées et sorties — organisés par date,
+                référence et libellé. Un historique complet, lisible et téléchargeable à tout moment
+                au format PDF certifié.
+            </p>
+            <ul class="feature-bullets">
+                <li>Historique de toutes vos transactions avec statut en temps réel</li>
+                <li>Filtrage par période, type de mouvement et montant</li>
+                <li>Relevés de compte téléchargeables en PDF horodaté</li>
+                <li>Solde mis à jour instantanément après chaque opération</li>
+            </ul>
+        </div>
+        <!-- Image -->
+        <div class="feature-image">
+            <img
+                src="https://credit-mutuel.fr.aptoide.com/_next/image?url=https%3A%2F%2Fcdn.aptoide.com%2Fimgs%2F8%2F6%2Fe%2F86e0cdb9cd76d1d94c22b8fb5219db23_fgraphic.jpg&w=3840&q=60"
+                alt="Visualisation des dépenses Crédit Mutuel"
+                loading="lazy"
+            >
+        </div>
+    </div>
+</section>
+
+
+<!-- ── Feature 2 : Cartes bancaires ───────────────────────────────────── -->
+<section class="feature-section feature-alt">
+    <div class="feature-inner reverse">
+        <!-- Image (à gauche grâce à reverse) -->
+        <div class="feature-image">
+            <img
+                src="https://cdn.aptoide.com/imgs/2/c/e/2ce653b9d3a2c257382e2d98bbba6d71_fgraphic.jpg"
+                alt="Cartes bancaires Crédit Mutuel"
+                loading="lazy"
+            >
+        </div>
+        <!-- Texte (à droite) -->
+        <div class="feature-text">
+            <p class="feature-eyebrow">Votre carte bancaire</p>
+            <h2 class="feature-title">
+                Votre carte <span class="red">Crédit Mutuel,</span><br>
+                toujours à portée.
+            </h2>
+            <p class="feature-desc">
+                Accédez à toutes vos informations bancaires en un coup d'œil.
+                Numéro de compte, IBAN, RIB complet — tout est disponible depuis votre espace client,
+                sécurisé et accessible 24h/24.
+            </p>
+            <ul class="feature-bullets">
+                <li>RIB téléchargeable en PDF certifié à tout moment</li>
+                <li>IBAN affiché clairement pour vos virements entrants</li>
+                <li>Coordonnées bancaires complètes : code banque, guichet, clé RIB</li>
+                <li>BIC / SWIFT international pour les virements depuis l'étranger</li>
+            </ul>
         </div>
     </div>
 </section>
