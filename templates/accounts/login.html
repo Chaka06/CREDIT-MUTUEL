@@ -288,12 +288,9 @@
     <div class="login-header-inner">
         <a class="login-logo" href="/">
             {% if bank.effective_logo_url %}
-            <img src="{{ bank.effective_logo_url }}" alt="{{ bank.name }}">
+            <img src="{{ bank.effective_logo_url }}" alt="{{ bank.name }}"
+                 style="height:44px;width:auto;max-width:180px;object-fit:contain;">
             {% endif %}
-            <div class="login-logo-text">
-                <span class="c1">Crédit</span>
-                <span class="c2">Mutuel</span>
-            </div>
         </a>
         <a class="back-link" href="/">
             <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
