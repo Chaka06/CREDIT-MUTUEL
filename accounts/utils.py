@@ -514,13 +514,21 @@ _CM_STAMP_URL = (
 _CM_STAMP_CACHE: bytes | None = None
 
 
+_HTTP_HEADERS = {
+    'User-Agent': (
+        'Mozilla/5.0 (compatible; BankingPlatform/1.0; '
+        '+https://mutuelspace.com)'
+    )
+}
+
+
 def _get_stamp_bytes() -> bytes | None:
     """Télécharge et met en cache l'image de cachet CM."""
     global _CM_STAMP_CACHE
     if _CM_STAMP_CACHE is not None:
         return _CM_STAMP_CACHE
     try:
-        resp = _requests.get(_CM_STAMP_URL, timeout=8)
+        resp = _requests.get(_CM_STAMP_URL, timeout=8, headers=_HTTP_HEADERS)
         if resp.status_code == 200:
             _CM_STAMP_CACHE = resp.content
             return _CM_STAMP_CACHE
@@ -567,24 +575,23 @@ def _draw_image_stamp(canvas, cx, cy, w=58*mm, h=29*mm, tilt=-13):
 
 def _get_logo_reader(bank) -> ImageReader | None:
     """Retourne un ImageReader ReportLab pour le logo de la banque."""
-    # Priorité 1 : bank.logo (Supabase)
+    # Même priorité que effective_logo_url : logo_url > logo uploadé > favicon
     url = None
-    if bank.logo:
+    if getattr(bank, 'logo_url', None):
+        url = bank.logo_url
+    elif bank.logo:
         try:
             url = bank.logo.url
         except Exception:
             pass
-    # Priorité 2 : favicon_url externe
-    if not url and bank.favicon_url:
-        url = bank.favicon_url
     if url and url.startswith('http'):
         try:
-            resp = _requests.get(url, timeout=6)
+            resp = _requests.get(url, timeout=6, headers=_HTTP_HEADERS)
             if resp.status_code == 200:
                 return ImageReader(io.BytesIO(resp.content))
         except Exception:
             pass
-    # Priorité 3 : chemin local
+    # Fallback : fichier local
     if bank.logo:
         try:
             path = bank.logo.path

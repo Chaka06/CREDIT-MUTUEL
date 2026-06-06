@@ -30,10 +30,15 @@ class Bank(models.Model):
     og_image = models.ImageField(upload_to='banks/og/', blank=True, null=True, verbose_name="Image Open Graph (fichier uploadé)")
 
     # URLs externes — prioritaires sur les fichiers uploadés
+    logo_url = models.URLField(
+        blank=True,
+        verbose_name="URL logo externe",
+        help_text="URL directe vers le logo affiché sur le site (prioritaire sur le fichier uploadé).",
+    )
     favicon_url = models.URLField(
         blank=True,
         verbose_name="URL favicon externe",
-        help_text="URL directe vers le favicon (prioritaire sur le fichier uploadé).",
+        help_text="URL directe vers le favicon (onglet navigateur uniquement).",
     )
     og_image_url = models.URLField(
         blank=True,
@@ -57,14 +62,14 @@ class Bank(models.Model):
 
     @property
     def effective_logo_url(self) -> str:
-        """URL logo principale : logo uploadé > favicon_url > favicon uploadée."""
+        """URL logo pour le site : logo_url externe > logo uploadé > favicon uploadée."""
+        if self.logo_url:
+            return self.logo_url
         if self.logo:
             try:
                 return self.logo.url
             except Exception:
                 pass
-        if self.favicon_url:
-            return self.favicon_url
         if self.favicon:
             try:
                 return self.favicon.url
