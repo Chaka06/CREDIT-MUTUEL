@@ -56,6 +56,23 @@ class Bank(models.Model):
         return f"/{self.slug}/login/"
 
     @property
+    def effective_logo_url(self) -> str:
+        """URL logo principale : logo uploadé > favicon_url > favicon uploadée."""
+        if self.logo:
+            try:
+                return self.logo.url
+            except Exception:
+                pass
+        if self.favicon_url:
+            return self.favicon_url
+        if self.favicon:
+            try:
+                return self.favicon.url
+            except Exception:
+                pass
+        return ''
+
+    @property
     def effective_favicon_url(self) -> str:
         """URL favicon finale : URL externe si définie, sinon fichier uploadé."""
         if self.favicon_url:

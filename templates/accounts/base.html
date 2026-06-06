@@ -197,22 +197,16 @@
 <aside class="sidebar hidden lg:flex" id="sidebar">
 
     <div class="px-5 py-5">
-        {% if bank.logo %}
-            <img src="{{ bank.logo.url }}" alt="{{ bank.name }}"
+        {% if bank.effective_logo_url %}
+            <img src="{{ bank.effective_logo_url }}" alt="{{ bank.name }}"
                  class="object-contain"
                  style="max-height:48px;max-width:170px;">
         {% else %}
-            <!-- Monogramme fallback -->
-            <div class="flex items-center gap-3">
-                <div style="width:42px;height:42px;border-radius:12px;background:rgba(255,255,255,.15);border:1.5px solid rgba(255,255,255,.22);display:flex;align-items:center;justify-content:center;flex-shrink:0;">
-                    <span style="color:white;font-weight:800;font-size:13px;letter-spacing:.02em;line-height:1;">{{ bank.name|slice:":3"|upper }}</span>
-                </div>
-                <div class="min-w-0">
-                    <p class="text-white font-bold text-sm leading-tight tracking-tight truncate">{{ bank.name }}</p>
-                    {% if bank.tagline %}
-                        <p class="text-xs mt-0.5 truncate" style="color:rgba(255,255,255,.4);">{{ bank.tagline }}</p>
-                    {% endif %}
-                </div>
+            <div class="min-w-0">
+                <p class="text-white font-bold text-sm leading-tight tracking-tight truncate">{{ bank.name }}</p>
+                {% if bank.tagline %}
+                    <p class="text-xs mt-0.5 truncate" style="color:rgba(255,255,255,.4);">{{ bank.tagline }}</p>
+                {% endif %}
             </div>
         {% endif %}
     </div>
@@ -300,15 +294,11 @@
     <header class="lg:hidden flex items-center justify-between px-4 py-3 border-b border-gray-100 bg-white flex-shrink-0"
             style="box-shadow:0 1px 8px rgba(0,0,0,.06);">
         <div class="flex items-center gap-2.5 min-w-0">
-            {% if bank.logo %}
-                <img src="{{ bank.logo.url }}" alt="{{ bank.name }}"
+            {% if bank.effective_logo_url %}
+                <img src="{{ bank.effective_logo_url }}" alt="{{ bank.name }}"
                      class="w-auto object-contain flex-shrink-0"
                      style="max-height:34px;max-width:120px;">
             {% else %}
-                <!-- Monogramme mobile fallback -->
-                <div style="width:34px;height:34px;border-radius:10px;background:var(--p);display:flex;align-items:center;justify-content:center;flex-shrink:0;">
-                    <span style="color:var(--pt);font-weight:800;font-size:11px;letter-spacing:.02em;line-height:1;">{{ bank.name|slice:":3"|upper }}</span>
-                </div>
                 <span class="font-bold text-sm leading-tight truncate" style="color:var(--p);">{{ bank.name }}</span>
             {% endif %}
         </div>

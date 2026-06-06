@@ -464,21 +464,14 @@
     <div class="nav-inner">
         <!-- Logo -->
         <a class="nav-logo" href="/">
-            {% if bank and bank.effective_favicon_url %}
-                <img src="{{ bank.effective_favicon_url }}" alt="{{ bank.name }}"
+            {% if bank and bank.effective_logo_url %}
+                <img src="{{ bank.effective_logo_url }}" alt="{{ bank.name }}"
                      style="height:44px;width:44px;object-fit:contain;border-radius:4px;">
-                <span style="margin-left:12px;">
-                    <div class="nav-logo-text">
-                        <span class="credit">Crédit</span>
-                        <span class="mutuel">Mutuel</span>
-                    </div>
-                </span>
-            {% else %}
-                <div class="nav-logo-text">
-                    <span class="credit">Crédit</span>
-                    <span class="mutuel">Mutuel</span>
-                </div>
             {% endif %}
+            <div class="nav-logo-text">
+                <span class="credit">Crédit</span>
+                <span class="mutuel">Mutuel</span>
+            </div>
         </a>
 
         <!-- Liens desktop -->
